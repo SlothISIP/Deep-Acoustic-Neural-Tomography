@@ -1,0 +1,25 @@
+Phase 0 Gate Validation Report
+==================================================
+
+frequency_hz: 2000.0
+wavenumber_rad_per_m: 36.63664902145531
+wavelength_m: 0.1715
+wedge_interior_angle_deg: 90.0
+wedge_exterior_angle_deg: 270.0
+wedge_nu: 0.6666666666666666
+source_r_m: 0.5
+source_theta_deg: 90.0
+n_elements: 358
+min_element_size_m: 0.002661077906688014
+max_element_size_m: 0.028583333333333627
+n_eval_points: 7200
+n_valid_eval_points: 7184
+n_series_terms: 250
+relative_l2_error_pct: 1.7738016618674586
+gate_threshold_pct: 3.0
+gate_pass: True
+n_nan_analytical: 0
+n_nan_bem: 0
+total_time_s: 12.201448440551758
+
+GATE: PASS

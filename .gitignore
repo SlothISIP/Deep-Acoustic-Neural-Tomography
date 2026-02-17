@@ -1,3 +1,17 @@
+# ============================================================
+# Project-specific ignores
+# ============================================================
+
+# Large BEM data (HDF5) -- track via DVC or external storage
+data/phase1/*.h5
+
+# Results -- regeneratable, keep reports only
+results/phase*/figures/
+
+# ============================================================
+# Python standard ignores
+# ============================================================
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
