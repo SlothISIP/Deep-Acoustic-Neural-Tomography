@@ -5,8 +5,11 @@
 # Large BEM data (HDF5) -- track via DVC or external storage
 data/phase1/*.h5
 
-# Results -- regeneratable, keep reports only
-results/phase*/figures/
+# Model checkpoints -- large binary, not version-controlled
+checkpoints/
+
+# Results -- regeneratable outputs (plots, CSVs, diagnostics)
+results/
 
 # ============================================================
 # Python standard ignores
