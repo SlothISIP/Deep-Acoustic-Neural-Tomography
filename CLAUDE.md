@@ -129,7 +129,7 @@ audio -> [Inverse] -> SDF -> [Forward Surrogate] -> audio' ~= audio
 | **0** | **Foundation Validation** | BEM vs Macdonald analytical < 3% error | **COMPLETE** |
 | **1** | **BEM Data Factory** | Causality h(t<0) ~ 0, 15 scenes generated | **COMPLETE** |
 | **2** | **Forward Model (Structured Green)** | BEM reconstruction error < 5% | **COMPLETE** |
-| 3 | Inverse Model (Sound → Geometry) | SDF IoU > 0.8, Helmholtz residual < 1e-3 | LOCKED |
+| 3 | Inverse Model (Sound → Geometry) | SDF IoU > 0.8, Helmholtz residual < 1e-3 | UNLOCKED |
 | 4 | Validation & Generalization | Cycle-consistency r > 0.8 | LOCKED |
 | 5 | Paper Writing & Submission | Submission complete | LOCKED |
 
@@ -431,11 +431,12 @@ Requires Python 3.9+ and OpenCL drivers.
 
 | File | Change |
 |------|--------|
-| `src/bem2d.py` | Vectorized 2D BEM solver, multi-source LU factorization |
-| `src/scenes.py` | 15 scenes (4 categories), SDF functions, region labeling |
-| `src/rir.py` | RIR synthesis + spectral taper + causal onset window |
-| `scripts/run_phase1.py` | Phase 1 factory runner, HDF5 checkpointing |
-| `CLAUDE.md` | Phase 1 COMPLETE, Phase 2 UNLOCKED |
+| `src/forward_model.py` | TransferFunctionModel: Fourier + ResidualBlocks + scene embedding |
+| `src/dataset.py` | HDF5 → PyTorch dataset, multi-scene, gate-aligned weighting |
+| `scripts/run_phase2.py` | Training: multi-scene, fine-tuning, boosting, 5 weight modes |
+| `scripts/eval_phase2.py` | Evaluation: ensemble, per-source calibration, gate check |
+| `src/scenes.py` | S13 fix: 2×4-vertex → 1×8-vertex polygon (double-surface fix) |
+| `CLAUDE.md` | Phase 2 COMPLETE, Phase 3 UNLOCKED |
 
 ---
 
@@ -484,4 +485,4 @@ project_root/
 - `docs/Project_history.md`: Full session log (append-only)
 - `.claude/skills/acoustic-validate/references/gate_criteria.md`: Phase gate criteria
 
-**Files**: 13 Python | **Lines**: ~5,000 | **History**: See `docs/Project_history.md`
+**Files**: 21 Python | **Lines**: ~8,000 | **History**: See `docs/Project_history.md`

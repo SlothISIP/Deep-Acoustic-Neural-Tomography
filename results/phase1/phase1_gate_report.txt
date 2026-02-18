@@ -1,27 +1,13 @@
 Phase 1 Gate Validation Report
-Generated: 2026-02-17 09:58:11
+Generated: 2026-02-18 23:41:33
 Threshold: causality ratio < 1e-04
 
   ID Name                   N_el   S     R  Pairs    Max Ratio   Mean Ratio   Gate
 --------------------------------------------------------------------------------
-   1 wedge_60deg             864   3   200    600     0.00e+00     0.00e+00   PASS
-   2 wedge_90deg             864   3   200    600     0.00e+00     0.00e+00   PASS
-   3 wedge_120deg            864   3   198    594     0.00e+00     0.00e+00   PASS
-   4 wedge_150deg            864   3   198    594     0.00e+00     0.00e+00   PASS
-   5 thin_barrier            196   3   196    588     0.00e+00     0.00e+00   PASS
-   6 cylinder_small          132   3   198    594     0.00e+00     0.00e+00   PASS
-   7 cylinder_large          352   3   198    594     0.00e+00     0.00e+00   PASS
-   8 square_block            244   3   196    588     0.00e+00     0.00e+00   PASS
-   9 rectangle               272   3   196    588     0.00e+00     0.00e+00   PASS
-  10 triangle                183   3   196    588     0.00e+00     0.00e+00   PASS
-  11 l_shape                 394   3   196    588     0.00e+00     0.00e+00   PASS
-  12 two_plates              328   3   198    594     0.00e+00     0.00e+00   PASS
-  13 step                    500   3   198    594     0.00e+00     0.00e+00   PASS
-  14 wedge_cylinder          952   3   196    588     0.00e+00     0.00e+00   PASS
-  15 three_cylinders         213   3   187    561     0.00e+00     0.00e+00   PASS
+  13 step                    440   3   196    588     0.00e+00     0.00e+00   PASS
 --------------------------------------------------------------------------------
 
 Overall: PASS
-Total pairs: 8853/8853 causal
+Total pairs: 588/588 causal
 Max causality ratio: 0.00e+00
-Total time: 3876s
+Total time: 204s
