@@ -615,44 +615,24 @@ def build_all_scenes() -> List[SceneConfig]:
         receivers_m=rcv_12,
     ))
 
-    # --- Scene 13: Step discontinuity ---
+    # --- Scene 13: Step discontinuity (single merged polygon) ---
+    # Previously two separate rectangles sharing an edge at x=0, which created
+    # 61 coincident BEM elements with opposing normals (double-surface pathology).
+    # Fix: merge into a single 8-vertex L-shaped polygon.
     step_w = 0.4
-    step_h1 = 0.15
-    step_h2 = 0.30
-    step1_verts = np.array([
-        [-step_w, -step_h1 / 2],
-        [0.0, -step_h1 / 2],
-        [0.0, step_h1 / 2],
-        [-step_w, step_h1 / 2],
+    step_h1 = 0.15   # left step height
+    step_h2 = 0.30   # right step height
+    step_merged_verts = np.array([
+        [-step_w, -step_h1 / 2],    # v0: bottom-left
+        [0.0, -step_h1 / 2],        # v1: bottom step junction
+        [0.0, -step_h2 / 2],        # v2: step down
+        [step_w, -step_h2 / 2],     # v3: bottom-right
+        [step_w, step_h2 / 2],      # v4: top-right
+        [0.0, step_h2 / 2],         # v5: step junction top
+        [0.0, step_h1 / 2],         # v6: step up
+        [-step_w, step_h1 / 2],     # v7: top-left
     ])
-    step2_verts = np.array([
-        [0.0, -step_h2 / 2],
-        [step_w, -step_h2 / 2],
-        [step_w, step_h2 / 2],
-        [0.0, step_h2 / 2],
-    ])
-
-    center_13 = np.array([0.0, 0.0])
-    src_13 = _body_exterior_sources(center_13, r_m=0.6, n_sources=3)
-    rcv_13 = _polar_receivers(
-        n_r=10, n_theta=20,
-        r_min_m=0.2, r_max_m=0.9,
-        theta_min_rad=0.0, theta_max_rad=2.0 * np.pi - 0.1,
-        exclusion_zones=[(s, 0.05) for s in src_13],
-    )
-    scenes.append(_make_multi_body_scene(
-        13, "step",
-        mesh_builders=[
-            lambda f, v=step1_verts: generate_mesh_polygon(v, f),
-            lambda f, v=step2_verts: generate_mesh_polygon(v, f),
-        ],
-        sdf_funcs=[
-            lambda x, y, v=step1_verts: _sdf_polygon(x, y, v),
-            lambda x, y, v=step2_verts: _sdf_polygon(x, y, v),
-        ],
-        sources_m=src_13,
-        receivers_m=rcv_13,
-    ))
+    scenes.append(_make_polygon_scene(13, "step", step_merged_verts))
 
     # --- Scene 14: Wedge (90 deg) + cylinder ---
     wedge_14_angle = np.pi / 2.0
