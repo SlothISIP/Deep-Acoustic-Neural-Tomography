@@ -399,42 +399,28 @@ Requires Python 3.9+ and OpenCL drivers.
 | **2: Forward Model** | **COMPLETE** | **PASS (4.47%)** |
 | **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.9491 > 0.8, v3 multi-code)** |
 | **4: Validation** | **COMPLETE** | **PASS (r = 0.9024 > 0.8, v3)** |
-| 5: Paper | UNLOCKED | -- |
+| **5: Paper** | **IN PROGRESS** | Experiments + figures done |
 
-### Session 8: S12 Multi-Code + Ablation Studies (2026-02-19)
+### Session 9: Additional Experiments + Publication Figures (2026-02-19)
 
 **Changes**:
-- S12 multi-code architecture (K=2 codes, smooth-min composition alpha=50)
-- Global fine-tune v2→v3 (LR=1e-4): IoU 0.9388→0.9491, S12 0.41→0.49
-- Forward ablation: 5 configs (single→quad, +/-calibration)
-- Inverse ablation: 4 configs (SDF-only→full+multi-code)
-- LaTeX tables generated for ICASSP paper
-- 29 unit tests (8 new multi-code tests), all passing
-
-**Forward Ablation** (key result: ensemble is critical):
-
-| Config | Error% |
-|--------|--------|
-| Single (v11) | 11.54% |
-| Quad ensemble + calib | **4.47%** |
-
-**Inverse Ablation** (key result: cycle loss +11.5% IoU):
-
-| Config | Mean IoU |
-|--------|----------|
-| SDF+Eik only | 0.6892 |
-| +Cycle (v2) | 0.9388 |
-| +Multi-code (v3) | **0.9491** |
+- Exp A (S12 sweep): K=3/K=4/alpha=100 — alpha=100 best (S12 IoU 0.98, others 0.86)
+- Exp B (LOO generalization): 52% mean IoU recovery with frozen decoder, code-only optimization
+- Exp C (Noise robustness): r > 0.86 at 10dB SNR, graceful degradation across all levels
+- 7 publication-quality ICASSP figures (300 DPI, PDF+PNG, IEEE 2-column format)
+- `smooth_min_alpha` param added to `build_inverse_model()` factory
+- 8 new unit tests (37 total, all passing)
 
 | File | Change |
 |------|--------|
-| `src/inverse_model.py` | Multi-code support (K>1, smooth-min, compat loading) |
-| `scripts/run_phase3.py` | `--multi-body` CLI arg, code table remapping |
-| `scripts/eval_phase3.py`, `eval_phase4.py` | Multi-body passthrough |
-| `scripts/run_ablation_forward.py` | **NEW** — 5-config forward ablation |
-| `scripts/run_ablation_inverse.py` | **NEW** — inverse component ablation |
-| `scripts/collect_ablations.py` | **NEW** — CSV + LaTeX table generation |
-| `tests/test_inverse_model.py` | 8 new multi-code tests (29 total) |
+| `src/inverse_model.py` | `smooth_min_alpha` param in `build_inverse_model()` |
+| `scripts/run_experiment_s12.py` | **NEW** — S12 K/alpha sweep (3 configs) |
+| `scripts/run_experiment_loo.py` | **NEW** — LOO code optimization (5 folds) |
+| `scripts/run_experiment_noise.py` | **NEW** — Noise robustness (4 SNR levels) |
+| `scripts/generate_paper_figures.py` | **NEW** — 7 ICASSP figures |
+| `tests/test_inverse_model.py` | 8 new tests (alpha, noise, gradient hook, freeze) |
+| `results/experiments/*.csv` | 3 experiment result CSVs |
+| `results/paper_figures/*.{pdf,png}` | 14 figure files (7 × PDF+PNG) |
 
 ---
 
@@ -466,9 +452,13 @@ project_root/
 │   ├── eval_phase4.py         # Phase 4 cycle-consistency gate
 │   ├── run_ablation_forward.py # Forward model ablation (5 configs)
 │   ├── run_ablation_inverse.py # Inverse model ablation
-│   └── collect_ablations.py   # Ablation results → CSV + LaTeX
+│   ├── collect_ablations.py   # Ablation results → CSV + LaTeX
+│   ├── run_experiment_s12.py  # Phase 5: S12 multi-body sweep
+│   ├── run_experiment_loo.py  # Phase 5: LOO generalization
+│   ├── run_experiment_noise.py # Phase 5: noise robustness
+│   └── generate_paper_figures.py # Phase 5: 7 ICASSP figures
 ├── tests/                     # Tests + diagnostics
-│   ├── test_inverse_model.py  # Phase 3 unit tests (29 tests)
+│   ├── test_inverse_model.py  # Phase 3 unit tests (37 tests)
 │   └── diagnostics/           # Phase 0 debug scripts (archived)
 ├── results/                   # Output results
 │   ├── phase0/                # Phase 0 validation outputs
@@ -476,7 +466,9 @@ project_root/
 │   ├── phase2/                # Phase 2 evaluation outputs
 │   ├── phase3/                # Phase 3 SDF contours + gate report
 │   ├── phase4/                # Phase 4 cycle-consistency outputs
-│   └── ablations/             # Ablation CSV + LaTeX tables
+│   ├── ablations/             # Ablation CSV + LaTeX tables
+│   ├── experiments/           # Phase 5 experiment CSVs
+│   └── paper_figures/         # Phase 5 publication figures
 ├── data/                      # Training data
 │   └── phase1/                # HDF5 BEM data (15 scenes)
 └── .claude/skills/            # Orca Mode skill definitions
@@ -498,10 +490,14 @@ project_root/
 - `src/dataset.py`: HDF5 → PyTorch dataset with multi-scene support (Phase 2)
 - `src/inverse_model.py`: SDFDecoder + InverseModel + loss functions (Phase 3)
 - `src/inverse_dataset.py`: Per-scene structured data loader (Phase 3)
-- `tests/test_inverse_model.py`: 29 unit tests for Phase 3 (all passing)
+- `tests/test_inverse_model.py`: 37 unit tests for Phase 3 (all passing)
 - `scripts/run_ablation_forward.py`: Forward model ablation (5 ensemble/calib configs)
 - `scripts/run_ablation_inverse.py`: Inverse model component ablation
 - `scripts/collect_ablations.py`: Ablation results → CSV + LaTeX tables
+- `scripts/run_experiment_s12.py`: Phase 5 S12 multi-body K/alpha sweep
+- `scripts/run_experiment_loo.py`: Phase 5 LOO code optimization (5 folds)
+- `scripts/run_experiment_noise.py`: Phase 5 noise robustness (4 SNR levels + clean)
+- `scripts/generate_paper_figures.py`: 7 ICASSP publication figures (300 DPI PDF+PNG)
 - `docs/Project_history.md`: Full session log (append-only)
 
-**Files**: 30 Python | **Lines**: ~12,234 | **History**: See `docs/Project_history.md`
+**Files**: 34 Python | **Lines**: ~16,463 | **History**: See `docs/Project_history.md`

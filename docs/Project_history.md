@@ -896,5 +896,184 @@ Per-scene v3 Phase 4 results:
 
 ---
 
+---
+
+## Session 9: 2026-02-19
+
+### Phase 5 Additional Experiments + Publication Figures
+
+**Duration**: ~30 minutes (code + experiments + figure generation)
+**Phase**: 5 (Paper Writing & Submission)
+
+---
+
+### 1. Overview
+
+Three additional experiments for ICASSP paper + 7 publication-quality figures:
+- **Exp A**: S12 multi-body architecture sweep (K, alpha variations)
+- **Exp B**: Leave-one-out (LOO) generalization test
+- **Exp C**: Noise robustness of cycle-consistency
+- **Figures**: IEEE 2-column format, 300 DPI, PDF+PNG, colorblind-safe
+
+---
+
+### 2. Code Modification: `src/inverse_model.py`
+
+Added `smooth_min_alpha: float = 50.0` parameter to `build_inverse_model()` factory function and passed it through to `InverseModel()` constructor.
+
+- `build_inverse_model()` signature: added `smooth_min_alpha` param (line 744)
+- `InverseModel()` constructor call: passes `smooth_min_alpha` (line 800)
+
+This allows Experiment A to test different alpha values without modifying the model class.
+
+---
+
+### 3. Experiment A: S12 Multi-Body Sweep (`scripts/run_experiment_s12.py`)
+
+**Method**: Load `best_phase3_v3.pt`, rebuild model with new K/alpha, freeze all codes except S12 (via gradient hook), co-train S12 codes + decoder. 200 epochs, LR=1e-4.
+
+| Config | K | Alpha | S12 IoU | Others IoU | Mean IoU | Time |
+|--------|---|-------|---------|------------|----------|------|
+| baseline (v3) | 2 | 50 | 0.4928 | 0.95+ | 0.9491 | --- |
+| S12-K3 | 3 | 50 | **1.0000** | 0.6016 | 0.6282 | 18.1s |
+| S12-K4 | 4 | 50 | 0.0769 | 0.5679 | 0.5352 | 22.8s |
+| S12-alpha100 | 2 | 100 | **0.9811** | 0.8629 | 0.8708 | 12.9s |
+
+**Key findings**:
+- **K=3**: S12 IoU reaches 1.0 but decoder catastrophic forgetting — other scenes drop from 0.95 to 0.60
+- **K=4**: Training instable, S12 IoU collapses to 0.08
+- **K=2, alpha=100**: Best tradeoff — S12 recovers to 0.98 while others stay at 0.86
+- **Root cause**: Decoder co-training with S12 causes forgetting. The gradient hook only masks code gradients but decoder is shared — 200 epochs of decoder updates biased toward S12 degrade other scenes
+
+**Paper discussion**: Architectural limitation confirmed. True multi-body reconstruction requires either (a) frozen decoder (code-only), (b) per-scene decoders, or (c) hypernetwork conditioning.
+
+---
+
+### 4. Experiment B: LOO Generalization (`scripts/run_experiment_loo.py`)
+
+**Method**: Load `best_phase3_v3.pt`, freeze entire decoder, re-initialize target scene's code to random, optimize code-only via SDF+Eikonal loss. 500 epochs, LR=1e-3. Reload fresh model for each fold.
+
+| Scene | Pre IoU | Post-Reset IoU | Final IoU | L1 Error | Recovery |
+|-------|---------|----------------|-----------|----------|----------|
+| S1 (wedge 60°) | 0.9941 | 0.0479 | **0.9156** | 0.0906 | 92.1% |
+| S5 (barrier) | 1.0000 | 0.0204 | 0.0896 | 0.0761 | 9.0% |
+| S7 (cylinder) | 0.9852 | 0.1476 | 0.3966 | 0.1265 | 40.3% |
+| S10 (triangle) | 0.9615 | 0.0703 | 0.2082 | 0.0515 | 21.7% |
+| S14 (wedge+cyl) | 0.9819 | 0.0443 | **0.9510** | 0.0451 | 96.9% |
+| **Mean** | **0.9845** | | **0.5122** | | **52.0%** |
+
+**Key findings**:
+- S1 and S14 recover to 92-97% — wedge-like geometry primitives well-represented in decoder latent space
+- S5 (flat barrier) fails at 9% — no similar flat-plate primitive in training distribution
+- S7 (cylinder) recovers to 40% — partial generalization for curved shapes
+- Mean recovery 52% — decoder partially generalizes but is far from universal
+
+**Paper discussion**: Auto-decoder learns shape-specific latent space, not universal SDF primitives. Encoder-based amortization (future work) would enable true generalization by leveraging acoustic observations rather than relying solely on geometric code optimization.
+
+---
+
+### 5. Experiment C: Noise Robustness (`scripts/run_experiment_noise.py`)
+
+**Method**: Inject complex Gaussian noise into BEM pressure at test time (no retraining). SNR = {10, 20, 30, 40} dB + clean. Re-run full cycle-consistency evaluation for all 15 scenes.
+
+| SNR (dB) | Mean r | Min r (S4) | Degradation |
+|----------|--------|------------|-------------|
+| clean | 0.9024 | 0.8336 | --- |
+| 40 | 0.9024 | 0.8335 | -0.0000 |
+| 30 | 0.9020 | 0.8331 | -0.0004 |
+| 20 | 0.8980 | 0.8293 | -0.0044 |
+| **10** | **0.8604** | **0.7944** | **-0.0420** |
+
+**Key findings**:
+- Model is remarkably robust: r > 0.86 even at 10dB SNR
+- Degradation is graceful and monotonic — no cliff edge or sudden failure
+- Gate (r > 0.8) passes at all tested SNR levels including 10dB
+- 40dB indistinguishable from clean (r difference < 0.0001)
+- S4 is consistently the weakest scene across all noise levels
+
+**Paper discussion**: The frozen forward model acts as an implicit denoiser — SDF prediction is geometry-only (noise-free), and the forward model reconstructs pressure from the clean SDF. Noise only affects the comparison (p_pred vs p_noisy), not the reconstruction path.
+
+---
+
+### 6. Publication Figures (`scripts/generate_paper_figures.py`)
+
+7 figures generated in IEEE ICASSP 2-column format:
+
+| # | Title | Size | Format |
+|---|-------|------|--------|
+| 1 | Architecture Diagram | 2-col (6.875") | PDF+PNG |
+| 2 | BEM Validation (Phase 0) | 1-col (3.35") | PDF+PNG |
+| 3 | Forward Performance (Per-Scene) | 1-col | PDF+PNG |
+| 4 | SDF Gallery (S1, S7, S10, S12) | 2-col | PDF+PNG |
+| 5 | Ablation Bar Charts (Forward + Inverse) | 2-col | PDF+PNG |
+| 6 | Cycle-Consistency Correlation | 1-col | PDF+PNG |
+| 7 | Generalization + Noise Results | 2-col | PDF+PNG |
+
+**Style**: serif font (DejaVu Serif), 8-9pt, 300 DPI, colorblind-safe Tol palette, TrueType fonts in PDF (fonttype=42).
+
+---
+
+### 7. New Tests (`tests/test_inverse_model.py`)
+
+8 new tests added (29 → 37 total, all passing):
+
+| Test | Class | Verification |
+|------|-------|-------------|
+| `test_default_alpha` | TestSmoothMinAlpha | Default smooth_min_alpha = 50.0 |
+| `test_custom_alpha` | TestSmoothMinAlpha | Custom alpha propagated to model |
+| `test_higher_alpha_sharper_min` | TestSmoothMinAlpha | alpha=200 closer to hard-min than alpha=5 |
+| `test_snr_accuracy` | TestNoiseInjection | Injected noise matches target SNR within 2dB |
+| `test_noise_preserves_shape` | TestNoiseInjection | Array shape preserved |
+| `test_clean_returns_copy` | TestNoiseInjection | Very high SNR ≈ clean signal |
+| `test_gradient_hook_zeros_non_target` | TestGradientHook | Non-target code gradients zeroed |
+| `test_decoder_freeze_code_only_optimization` | TestGradientHook | Frozen decoder unchanged after optim step |
+
+---
+
+### 8. Files Created/Modified
+
+| File | Changes |
+|------|---------|
+| `src/inverse_model.py` (MODIFIED, +5 lines) | `smooth_min_alpha` param in `build_inverse_model()` |
+| `scripts/run_experiment_s12.py` (NEW, 381 lines) | S12 K/alpha sweep, gradient hook, CSV output |
+| `scripts/run_experiment_loo.py` (NEW, 299 lines) | LOO code optimization, decoder freeze, 5 folds |
+| `scripts/run_experiment_noise.py` (NEW, 367 lines) | Noise injection, cycle eval, 4 SNR levels |
+| `scripts/generate_paper_figures.py` (NEW, 509 lines) | 7 ICASSP figures, IEEE style, PDF+PNG |
+| `tests/test_inverse_model.py` (MODIFIED, +120 lines) | 8 new tests (37 total) |
+| `results/experiments/s12_sweep.csv` (NEW) | S12 architecture sweep results |
+| `results/experiments/loo_generalization.csv` (NEW) | LOO code optimization results |
+| `results/experiments/noise_robustness.csv` (NEW) | Noise robustness per-scene r values |
+| `results/paper_figures/fig_{1..7}_*.{pdf,png}` (NEW, 14 files) | Publication figures |
+
+---
+
+### 9. Phase Status
+
+| Phase | Status | Gate Result |
+|-------|--------|-------------|
+| **0: Foundation Validation** | **COMPLETE** | **PASS (1.77%)** |
+| **1: BEM Data Factory** | **COMPLETE** | **PASS (8853/8853 causal, 100%)** |
+| **2: Forward Model** | **COMPLETE** | **PASS (4.47%)** |
+| **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.9491 > 0.8, v3 multi-code)** |
+| **4: Validation** | **COMPLETE** | **PASS (r = 0.9024 > 0.8, v3)** |
+| **5: Paper** | **IN PROGRESS** | Experiments + figures done |
+
+---
+
+### 10. Paper-Ready Deliverables (Cumulative)
+
+| Deliverable | Location |
+|-------------|----------|
+| Forward ablation LaTeX table | `results/ablations/forward_ablation.tex` |
+| Inverse ablation LaTeX table | `results/ablations/inverse_ablation.tex` |
+| S12 sweep results | `results/experiments/s12_sweep.csv` |
+| LOO generalization results | `results/experiments/loo_generalization.csv` |
+| Noise robustness results | `results/experiments/noise_robustness.csv` |
+| 7 ICASSP figures (PDF+PNG) | `results/paper_figures/` |
+| SDF contour plots (15 scenes) | `results/phase3/sdf_contour_scene_*.png` |
+| Cycle-consistency scatter plots | `results/phase4/scatter_summary.png` |
+
+---
+
 *Last Updated: 2026-02-19*
-*Session 8: S12 multi-code + ablation studies complete. All deliverables ready for ICASSP paper.*
+*Session 9: Additional experiments (S12 sweep, LOO, noise) + 7 publication figures complete.*

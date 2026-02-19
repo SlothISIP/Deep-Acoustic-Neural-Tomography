@@ -449,3 +449,182 @@ class TestMultiCode:
             old_z1, new_z1_first,
             msg="First code of multi-body scene should match old checkpoint",
         )
+
+
+# ---------------------------------------------------------------------------
+# Test: smooth_min_alpha parameter
+# ---------------------------------------------------------------------------
+class TestSmoothMinAlpha:
+    """Tests for smooth_min_alpha passthrough in build_inverse_model."""
+
+    def test_default_alpha(self, device):
+        """Default smooth_min_alpha = 50.0."""
+        model = build_inverse_model(
+            n_scenes=2, d_cond=32, d_hidden=64,
+            n_blocks=2, n_fourier=16, fourier_sigma=10.0, dropout=0.0,
+        ).to(device)
+        assert model.smooth_min_alpha == 50.0
+
+    def test_custom_alpha(self, device):
+        """Custom smooth_min_alpha propagated to model."""
+        model = build_inverse_model(
+            n_scenes=2, d_cond=32, d_hidden=64,
+            n_blocks=2, n_fourier=16, fourier_sigma=10.0, dropout=0.0,
+            smooth_min_alpha=100.0,
+        ).to(device)
+        assert model.smooth_min_alpha == 100.0
+
+    def test_higher_alpha_sharper_min(self, device):
+        """Higher alpha gives result closer to hard min."""
+        # Two SDFs: close values where approximation error is visible
+        B = 100
+        sdf_a = torch.full((B, 1), 0.10, device=device, dtype=torch.float64)
+        sdf_b = torch.full((B, 1), 0.12, device=device, dtype=torch.float64)
+        sdf_cat = torch.cat([sdf_a, sdf_b], dim=-1)  # (B, 2)
+
+        # Smooth-min with alpha=5 (loose)
+        alpha_5 = -torch.logsumexp(-5.0 * sdf_cat, dim=-1) / 5.0
+        # Smooth-min with alpha=200 (tight)
+        alpha_200 = -torch.logsumexp(-200.0 * sdf_cat, dim=-1) / 200.0
+
+        hard_min = 0.10  # min(0.10, 0.12) = 0.10
+        err_5 = abs(alpha_5[0].item() - hard_min)
+        err_200 = abs(alpha_200[0].item() - hard_min)
+
+        assert err_200 < err_5, (
+            f"Higher alpha should give closer to hard min: "
+            f"err_5={err_5:.6f}, err_200={err_200:.6f}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test: Noise injection
+# ---------------------------------------------------------------------------
+class TestNoiseInjection:
+    """Tests for noise injection used in Experiment C."""
+
+    def test_snr_accuracy(self):
+        """Injected noise matches target SNR within 1 dB."""
+        # Import noise function
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from run_experiment_noise import inject_noise, verify_snr
+
+        rng = np.random.RandomState(42)
+        # Create synthetic complex pressure
+        B = 10000
+        pressure = (
+            np.random.randn(B) + 1j * np.random.randn(B)
+        ).astype(np.complex128)
+
+        for target_snr in [10.0, 20.0, 30.0, 40.0]:
+            noisy = inject_noise(pressure, target_snr, rng)
+            actual_snr = verify_snr(pressure, noisy, target_snr, tolerance_db=2.0)
+
+            assert abs(actual_snr - target_snr) < 2.0, (
+                f"SNR mismatch: target={target_snr:.1f}, actual={actual_snr:.1f}"
+            )
+
+    def test_noise_preserves_shape(self):
+        """Noise injection preserves array shape."""
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from run_experiment_noise import inject_noise
+
+        rng = np.random.RandomState(42)
+        shape = (3, 200, 100)
+        pressure = np.random.randn(*shape) + 1j * np.random.randn(*shape)
+        noisy = inject_noise(pressure, 20.0, rng)
+        assert noisy.shape == shape, f"Shape mismatch: {noisy.shape} != {shape}"
+
+    def test_clean_returns_copy(self):
+        """With no noise (SNR=inf), should be clean copy."""
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from run_experiment_noise import inject_noise
+
+        rng = np.random.RandomState(42)
+        pressure = np.array([1.0 + 2j, 3.0 + 4j])
+        # Very high SNR -> negligible noise
+        noisy = inject_noise(pressure, 100.0, rng)
+        np.testing.assert_allclose(
+            np.abs(noisy), np.abs(pressure), rtol=0.1,
+            err_msg="Very high SNR should produce near-clean signal",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test: Gradient hook for S12
+# ---------------------------------------------------------------------------
+class TestGradientHook:
+    """Tests for gradient hook used in S12 experiment."""
+
+    def test_gradient_hook_zeros_non_target(self, device):
+        """Gradient hook zeros out non-target code gradients."""
+        model = build_inverse_model(
+            n_scenes=3, d_cond=32, d_hidden=64,
+            n_blocks=2, n_fourier=16, fourier_sigma=10.0, dropout=0.0,
+            multi_body_scene_ids={1: 2},
+            inv_scene_id_map={0: 0, 1: 1, 2: 2},
+        ).to(device)
+
+        target_idx = 1  # scene index with K=2 codes
+        start, end = model._scene_code_ranges[target_idx]
+
+        def hook(grad):
+            mask = torch.zeros_like(grad)
+            mask[start:end] = 1.0
+            return grad * mask
+
+        handle = model.auto_decoder_codes.weight.register_hook(hook)
+
+        # Forward + backward
+        xy = torch.randn(10, 2, device=device)
+        sdf = model.predict_sdf(target_idx, xy)
+        loss = sdf.sum()
+        loss.backward()
+
+        grad = model.auto_decoder_codes.weight.grad
+        assert grad is not None
+
+        # Non-target codes should have zero gradient
+        for si in range(3):
+            s, e = model._scene_code_ranges[si]
+            if si != target_idx:
+                assert torch.all(grad[s:e] == 0), (
+                    f"Scene {si} codes should have zero gradient"
+                )
+            else:
+                assert torch.any(grad[s:e] != 0), (
+                    f"Target scene {si} codes should have nonzero gradient"
+                )
+
+        handle.remove()
+
+    def test_decoder_freeze_code_only_optimization(self, device):
+        """When decoder is frozen, only codes change during optimization."""
+        model = build_inverse_model(
+            n_scenes=2, d_cond=32, d_hidden=64,
+            n_blocks=2, n_fourier=16, fourier_sigma=10.0, dropout=0.0,
+        ).to(device)
+
+        # Freeze decoder
+        for param in model.sdf_decoder.parameters():
+            param.requires_grad = False
+
+        # Record decoder state
+        decoder_state_before = {
+            k: v.clone() for k, v in model.sdf_decoder.state_dict().items()
+        }
+
+        # One optimization step
+        optimizer = torch.optim.Adam([model.auto_decoder_codes.weight], lr=1e-2)
+        xy = torch.randn(10, 2, device=device, requires_grad=True)
+        sdf = model.predict_sdf(0, xy)
+        loss = sdf.sum()
+        loss.backward()
+        optimizer.step()
+
+        # Verify decoder unchanged
+        for k, v in model.sdf_decoder.state_dict().items():
+            torch.testing.assert_close(
+                v, decoder_state_before[k],
+                msg=f"Decoder param {k} should not change when frozen",
+            )

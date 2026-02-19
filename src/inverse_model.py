@@ -741,6 +741,7 @@ def build_inverse_model(
     dropout: float = 0.05,
     multi_body_scene_ids: Optional[Dict[int, int]] = None,
     inv_scene_id_map: Optional[Dict[int, int]] = None,
+    smooth_min_alpha: float = 50.0,
 ) -> InverseModel:
     """Build the Phase 3 inverse model.
 
@@ -766,6 +767,9 @@ def build_inverse_model(
     inv_scene_id_map : dict, optional
         Mapping {scene_id: scene_idx} to convert scene_ids to 0-indexed.
         Required when multi_body_scene_ids uses scene_ids (not indices).
+    smooth_min_alpha : float
+        Sharpness of smooth-min (log-sum-exp) for multi-code composition.
+        Higher = closer to hard min. Default 50.0.
 
     Returns
     -------
@@ -796,6 +800,7 @@ def build_inverse_model(
         fourier_sigma=fourier_sigma,
         dropout=dropout,
         codes_per_scene=codes_per_scene,
+        smooth_min_alpha=smooth_min_alpha,
     )
 
     n_params = model.count_parameters()
