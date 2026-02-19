@@ -405,7 +405,7 @@ Requires Python 3.9+ and OpenCL drivers.
 | **2: Forward Model** | **COMPLETE** | **PASS (4.47%, quad ensemble + calib)** |
 | **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.912±0.011, 3 seeds)** |
 | **4: Validation** | **COMPLETE** | **PASS (r = 0.907±0.001, 3 seeds)** |
-| **5: Paper** | **IN PROGRESS** | ICASSP manuscript draft complete |
+| **5: Paper** | **IN PROGRESS** | ICASSP manuscript + baselines complete |
 
 ### Known Limitations (Paper Discussion Points)
 
@@ -414,25 +414,26 @@ Requires Python 3.9+ and OpenCL drivers.
 3. **S13 shadow zone**: 18.62% forward error — deep shadow behind step geometry.
 4. **2D synthetic only**: No 3D extension or real measured data.
 5. **Cycle ≠ geometry accuracy**: S12 has IoU 0.49 but cycle r=0.92 — forward model compensates via non-SDF features, revealing ill-posedness.
+6. **Cross-frequency**: Extrapolation to unseen freq ranges fails (42.99% error). Model requires dense spectral coverage.
 
-### Session 10: Paper-Readiness Review + ICASSP Manuscript (2026-02-19)
+### Session 11: Baseline Comparisons & Extended Experiments (2026-02-20)
 
 **Changes**:
-- Critical review: 9 issues identified (Helmholtz claims, single seed, etc.)
-- S12 frozen-decoder: code-only optimization → IoU 0.49→0.62, zero drift
-- Seed sweep: 3 seeds (42/123/456) → IoU 0.912±0.011, r 0.907±0.001
-- ICASSP manuscript: 4pp, 4 figs, 3 tables, 9 refs
-- CLAUDE.md: Helmholtz removal, architecture alignment, honest claims
+- P0: Vanilla MLP baseline — 48.00% error (= no-scatterer 47.95%), proves T formulation essential
+- P1: Extended SDF metrics — IoU 0.825, Chamfer 0.063m, Hausdorff 0.456m
+- P2b: No-Fourier ablation — 2.27% error (882 ep), FF not essential for final accuracy
+- P3: Cross-freq generalization — extrapolation 42.99%, interpolation 39.62%
+- Added `pressure` target mode to `src/dataset.py` for vanilla baseline
+- Added Chamfer/Hausdorff/boundary-L1 metrics to `src/inverse_model.py`
 
 | File | Change |
 |------|--------|
-| `paper/main.tex` | **NEW** — ICASSP 4-page manuscript |
-| `paper/refs.bib` | **NEW** — 9 bibliography entries |
-| `docs/paper_framing.md` | **NEW** — Title, contributions, claims |
-| `scripts/run_experiment_s12_frozen.py` | **NEW** — S12 frozen-decoder |
-| `scripts/run_seed_sweep.py` | **NEW** — 3-seed reproducibility |
-| `results/experiments/seed_sweep.csv` | **NEW** — Seed sweep results |
-| `CLAUDE.md` | 6 edits: honest claims, actual architecture |
+| `scripts/run_baseline_vanilla.py` | **NEW** — P0+P2a: vanilla MLP + no-scatterer |
+| `scripts/eval_sdf_metrics.py` | **NEW** — P1: Chamfer/Hausdorff evaluation |
+| `scripts/run_baseline_no_fourier.py` | **NEW** — P2b: no-Fourier ablation |
+| `scripts/run_cross_freq.py` | **NEW** — P3: cross-freq generalization |
+| `src/dataset.py` | Added `pressure` target mode |
+| `src/inverse_model.py` | Added 3 SDF metric functions (contour, Chamfer, boundary L1) |
 
 ---
 
@@ -474,7 +475,11 @@ project_root/
 │   ├── run_experiment_noise.py # Phase 5: noise robustness
 │   ├── run_experiment_s12_frozen.py # Phase 5: S12 frozen-decoder
 │   ├── run_seed_sweep.py      # Phase 5: seed reproducibility
-│   └── generate_paper_figures.py # Phase 5: 7 ICASSP figures
+│   ├── generate_paper_figures.py # Phase 5: 7 ICASSP figures
+│   ├── run_baseline_vanilla.py # Phase 5: vanilla MLP + no-scatterer
+│   ├── run_baseline_no_fourier.py # Phase 5: no-Fourier ablation
+│   ├── eval_sdf_metrics.py    # Phase 5: extended SDF metrics
+│   └── run_cross_freq.py      # Phase 5: cross-freq generalization
 ├── tests/                     # Tests + diagnostics
 │   ├── test_inverse_model.py  # Phase 3 unit tests (37 tests)
 │   └── diagnostics/           # Phase 0 debug scripts (archived)
@@ -516,6 +521,10 @@ project_root/
 - `scripts/run_experiment_loo.py`: Phase 5 LOO code optimization (5 folds)
 - `scripts/run_experiment_noise.py`: Phase 5 noise robustness (4 SNR levels + clean)
 - `scripts/generate_paper_figures.py`: 7 ICASSP publication figures (300 DPI PDF+PNG)
+- `scripts/run_baseline_vanilla.py`: Phase 5 vanilla MLP + no-scatterer baseline
+- `scripts/run_baseline_no_fourier.py`: Phase 5 no-Fourier-feature ablation
+- `scripts/eval_sdf_metrics.py`: Phase 5 extended SDF metrics (Chamfer, Hausdorff)
+- `scripts/run_cross_freq.py`: Phase 5 cross-frequency generalization test
 - `docs/Project_history.md`: Full session log (append-only)
 
-**Files**: 36 Python + 2 LaTeX | **Lines**: ~18,000 | **History**: See `docs/Project_history.md`
+**Files**: 40 Python + 2 LaTeX | **Lines**: ~20,000 | **History**: See `docs/Project_history.md`

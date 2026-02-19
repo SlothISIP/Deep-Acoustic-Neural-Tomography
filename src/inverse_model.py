@@ -729,6 +729,153 @@ def compute_sdf_iou(
 
 
 # ---------------------------------------------------------------------------
+# Metric: Chamfer & Hausdorff Distance (boundary-level SDF metrics)
+# ---------------------------------------------------------------------------
+def extract_zero_contour(
+    sdf_grid: np.ndarray,
+    grid_x: np.ndarray,
+    grid_y: np.ndarray,
+) -> np.ndarray:
+    """Extract zero-level contour points from SDF grid via sign changes.
+
+    Uses linear interpolation on grid edges where SDF crosses zero.
+    Implements marching-squares zero-crossing detection without external
+    dependencies (no skimage required).
+
+    Parameters
+    ----------
+    sdf_grid : np.ndarray, shape (Gx, Gy)
+        Signed distance field on regular grid.
+    grid_x : np.ndarray, shape (Gx,)
+        X coordinates of grid.
+    grid_y : np.ndarray, shape (Gy,)
+        Y coordinates of grid.
+
+    Returns
+    -------
+    contour_points : np.ndarray, shape (N, 2)
+        Physical coordinates of zero-crossing points [m].
+        Empty (0, 2) array if no crossings found.
+    """
+    points: list = []
+    gx, gy = sdf_grid.shape
+
+    # Horizontal edges: sign change along y-axis
+    for i in range(gx):
+        s_row = sdf_grid[i, :]  # (Gy,)
+        sign_change = s_row[:-1] * s_row[1:] < 0  # (Gy-1,)
+        j_indices = np.where(sign_change)[0]
+        for j in j_indices:
+            t = s_row[j] / (s_row[j] - s_row[j + 1])
+            x = grid_x[i]
+            y = grid_y[j] + t * (grid_y[j + 1] - grid_y[j])
+            points.append([x, y])
+
+    # Vertical edges: sign change along x-axis
+    for j in range(gy):
+        s_col = sdf_grid[:, j]  # (Gx,)
+        sign_change = s_col[:-1] * s_col[1:] < 0  # (Gx-1,)
+        i_indices = np.where(sign_change)[0]
+        for i in i_indices:
+            t = s_col[i] / (s_col[i] - s_col[i + 1])
+            x = grid_x[i] + t * (grid_x[i + 1] - grid_x[i])
+            y = grid_y[j]
+            points.append([x, y])
+
+    if len(points) == 0:
+        return np.zeros((0, 2), dtype=np.float64)
+
+    return np.array(points, dtype=np.float64)  # (N, 2)
+
+
+def compute_chamfer_hausdorff(
+    contour_pred: np.ndarray,
+    contour_gt: np.ndarray,
+) -> tuple:
+    """Compute Chamfer distance and Hausdorff distance between contours.
+
+    Chamfer distance (CD):
+        CD = (1/|P|) Σ_p min_q ||p-q|| + (1/|Q|) Σ_q min_p ||q-p||
+        Averaged bidirectional nearest-neighbor distance [m].
+
+    Hausdorff distance (HD):
+        HD = max( max_p min_q ||p-q||, max_q min_p ||q-p|| )
+        Worst-case boundary deviation [m].
+
+    Parameters
+    ----------
+    contour_pred : np.ndarray, shape (N, 2)
+        Predicted boundary points [m].
+    contour_gt : np.ndarray, shape (M, 2)
+        Ground truth boundary points [m].
+
+    Returns
+    -------
+    chamfer : float
+        Chamfer distance [m].
+    hausdorff : float
+        Hausdorff distance [m].
+    """
+    from scipy.spatial import KDTree
+
+    if len(contour_pred) == 0 or len(contour_gt) == 0:
+        return float("inf"), float("inf")
+
+    tree_gt = KDTree(contour_gt)
+    tree_pred = KDTree(contour_pred)
+
+    d_pred_to_gt, _ = tree_gt.query(contour_pred)  # (N,)
+    d_gt_to_pred, _ = tree_pred.query(contour_gt)   # (M,)
+
+    chamfer = (d_pred_to_gt.mean() + d_gt_to_pred.mean()) / 2.0
+    hausdorff = max(d_pred_to_gt.max(), d_gt_to_pred.max())
+
+    return float(chamfer), float(hausdorff)
+
+
+def compute_sdf_boundary_errors(
+    sdf_pred: np.ndarray,
+    sdf_gt: np.ndarray,
+    near_threshold_m: float = 0.1,
+    far_threshold_m: float = 0.5,
+) -> dict:
+    """Compute SDF L1 error stratified by distance to boundary.
+
+    Parameters
+    ----------
+    sdf_pred : np.ndarray, shape (N,)
+        Predicted SDF values.
+    sdf_gt : np.ndarray, shape (N,)
+        Ground truth SDF values.
+    near_threshold_m : float
+        Distance threshold for "near boundary" region [m].
+    far_threshold_m : float
+        Distance threshold for "far from boundary" region [m].
+
+    Returns
+    -------
+    dict with 'l1_near', 'l1_far', 'l1_overall', 'n_near', 'n_far'.
+    """
+    abs_gt = np.abs(sdf_gt)
+    abs_diff = np.abs(sdf_pred - sdf_gt)
+
+    near_mask = abs_gt < near_threshold_m
+    far_mask = abs_gt > far_threshold_m
+
+    l1_overall = float(abs_diff.mean())
+    l1_near = float(abs_diff[near_mask].mean()) if near_mask.sum() > 0 else float("nan")
+    l1_far = float(abs_diff[far_mask].mean()) if far_mask.sum() > 0 else float("nan")
+
+    return {
+        "l1_near": l1_near,
+        "l1_far": l1_far,
+        "l1_overall": l1_overall,
+        "n_near": int(near_mask.sum()),
+        "n_far": int(far_mask.sum()),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Model factory
 # ---------------------------------------------------------------------------
 def build_inverse_model(

@@ -85,7 +85,7 @@ class Phase1Dataset(Dataset):
         self.target_mode = target_mode  # "cartesian" or "log_polar"
         self.target_stats: Optional[Dict[str, np.ndarray]] = None
 
-        if target_mode not in ("cartesian", "log_polar"):
+        if target_mode not in ("cartesian", "log_polar", "pressure"):
             raise ValueError(f"Unknown target_mode: {target_mode}")
 
         if scene_ids is None:
@@ -107,9 +107,9 @@ class Phase1Dataset(Dataset):
             logger.info("Loading scene %d: %s", sid, h5_path.name)
             inputs, targets, labels = self._load_scene(h5_path)
 
-            if target_mode == "cartesian":
+            if target_mode in ("cartesian", "pressure"):
                 # Optional log compression: sign(x) * log(1 + |x|)
-                if self.log_compress:
+                if self.log_compress and target_mode == "cartesian":
                     targets = np.sign(targets) * np.log1p(np.abs(targets))
 
                 # Per-scene RMS normalization
@@ -275,6 +275,11 @@ class Phase1Dataset(Dataset):
                         np.cos(angle_R).ravel(),
                         np.sin(angle_R).ravel(),
                     ])  # (F*R, 3)
+                elif self.target_mode == "pressure":
+                    # Raw scattered pressure (Re, Im) — no division by p_inc
+                    targets_src = np.column_stack(
+                        [p_scat.ravel().real, p_scat.ravel().imag]
+                    )  # (F*R, 2)
                 else:
                     targets_src = np.column_stack(
                         [T.ravel().real, T.ravel().imag]
