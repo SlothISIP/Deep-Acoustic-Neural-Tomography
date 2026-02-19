@@ -34,7 +34,7 @@ Reference
 
 import logging
 import math
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import torch
@@ -156,6 +156,9 @@ class InverseModel(nn.Module):
     Uses auto-decoder approach (DeepSDF): per-scene learnable latent codes
     are optimized jointly with the SDF decoder via backprop.
 
+    Multi-body support: scenes with K>1 codes use smooth-min composition
+    to represent disjoint geometry (e.g., S12 dual parallel bars).
+
     Parameters
     ----------
     n_scenes : int
@@ -172,6 +175,12 @@ class InverseModel(nn.Module):
         Fourier feature bandwidth [m^-1].
     dropout : float
         Dropout rate in SDF decoder.
+    codes_per_scene : dict, optional
+        Mapping {scene_idx: K} for multi-code scenes.
+        Default: all scenes get K=1.
+    smooth_min_alpha : float
+        Sharpness of smooth-min (log-sum-exp) approximation.
+        Higher = closer to hard min. Default 50.0.
     """
 
     def __init__(
@@ -183,16 +192,33 @@ class InverseModel(nn.Module):
         n_fourier: int = 128,
         fourier_sigma: float = 10.0,
         dropout: float = 0.05,
+        codes_per_scene: Optional[Dict[int, int]] = None,
+        smooth_min_alpha: float = 50.0,
     ) -> None:
         super().__init__()
         self.n_scenes = n_scenes
         self.d_cond = d_cond
+        self.smooth_min_alpha = smooth_min_alpha
 
-        # Auto-decoder: per-scene learnable latent codes
-        self.auto_decoder_codes = nn.Embedding(n_scenes, d_cond)
+        # Build code allocation: how many codes per scene
+        if codes_per_scene is None:
+            codes_per_scene = {}
+        self.codes_per_scene = codes_per_scene  # {scene_idx: K}
+
+        # Compute total number of codes and per-scene ranges
+        total_codes = 0
+        self._scene_code_ranges: Dict[int, Tuple[int, int]] = {}
+        for si in range(n_scenes):
+            k = codes_per_scene.get(si, 1)
+            self._scene_code_ranges[si] = (total_codes, total_codes + k)
+            total_codes += k
+        self._total_codes = total_codes
+
+        # Auto-decoder: variable-size code table
+        self.auto_decoder_codes = nn.Embedding(total_codes, d_cond)
         nn.init.normal_(self.auto_decoder_codes.weight, std=0.01)
 
-        # SDF decoder
+        # SDF decoder (shared across all codes)
         self.sdf_decoder = SDFDecoder(
             d_cond=d_cond,
             d_hidden=d_hidden,
@@ -202,12 +228,21 @@ class InverseModel(nn.Module):
             dropout=dropout,
         )
 
+    def n_codes_for_scene(self, scene_idx: int) -> int:
+        """Number of latent codes for a scene."""
+        start, end = self._scene_code_ranges[scene_idx]
+        return end - start
+
     def predict_sdf(
         self,
         scene_idx: int,
         xy_m: torch.Tensor,
     ) -> torch.Tensor:
         """Predict SDF at spatial coordinates for a given scene.
+
+        For single-code scenes (K=1): standard forward pass.
+        For multi-code scenes (K>1): predict SDF per code, compose
+        via smooth-min (log-sum-exp approximation to min).
 
         Parameters
         ----------
@@ -221,12 +256,37 @@ class InverseModel(nn.Module):
         sdf : torch.Tensor, shape (B, 1)
             Signed distance prediction [m].
         """
-        z = self.auto_decoder_codes.weight[scene_idx]  # (d_cond,)
-        z_exp = z.unsqueeze(0).expand(xy_m.shape[0], -1)  # (B, d_cond)
-        return self.sdf_decoder(xy_m, z_exp)  # (B, 1)
+        start, end = self._scene_code_ranges[scene_idx]
+        K = end - start
+
+        if K == 1:
+            # Single code: original fast path
+            z = self.auto_decoder_codes.weight[start]  # (d_cond,)
+            z_exp = z.unsqueeze(0).expand(xy_m.shape[0], -1)  # (B, d_cond)
+            return self.sdf_decoder(xy_m, z_exp)  # (B, 1)
+
+        # Multi-code: predict SDF per code, compose via smooth-min
+        B = xy_m.shape[0]
+        sdf_stack = []  # K tensors of (B, 1)
+        for ci in range(start, end):
+            z_k = self.auto_decoder_codes.weight[ci]  # (d_cond,)
+            z_exp = z_k.unsqueeze(0).expand(B, -1)  # (B, d_cond)
+            sdf_k = self.sdf_decoder(xy_m, z_exp)  # (B, 1)
+            sdf_stack.append(sdf_k)
+
+        sdf_cat = torch.cat(sdf_stack, dim=-1)  # (B, K)
+
+        # Smooth-min: sdf = -logsumexp(-alpha * sdf_cat) / alpha
+        # Approximates min(sdf_1, ..., sdf_K) for large alpha
+        alpha = self.smooth_min_alpha
+        sdf_composed = -torch.logsumexp(
+            -alpha * sdf_cat, dim=-1, keepdim=True
+        ) / alpha  # (B, 1)
+
+        return sdf_composed
 
     def get_code(self, scene_idx: int) -> torch.Tensor:
-        """Get the latent code for a scene (no copy).
+        """Get the latent code(s) for a scene (no copy).
 
         Parameters
         ----------
@@ -235,14 +295,63 @@ class InverseModel(nn.Module):
 
         Returns
         -------
-        z : torch.Tensor, shape (d_cond,)
+        z : torch.Tensor
+            shape (d_cond,) for K=1, shape (K, d_cond) for K>1.
         """
-        return self.auto_decoder_codes.weight[scene_idx]
+        start, end = self._scene_code_ranges[scene_idx]
+        K = end - start
+        if K == 1:
+            return self.auto_decoder_codes.weight[start]
+        return self.auto_decoder_codes.weight[start:end]  # (K, d_cond)
 
     @torch.no_grad()
     def count_parameters(self) -> int:
         """Total number of trainable parameters."""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+    def load_state_dict_compat(
+        self,
+        state_dict: dict,
+        strict: bool = False,
+    ) -> None:
+        """Load checkpoint with backward compatibility for old format.
+
+        Old format: auto_decoder_codes.weight has shape (n_scenes, d_cond)
+        New format: auto_decoder_codes.weight has shape (total_codes, d_cond)
+
+        When loading old checkpoints into multi-code model, single-code
+        weights are copied to the first code of each scene. Extra codes
+        are re-initialized.
+
+        Parameters
+        ----------
+        state_dict : dict
+            Checkpoint state dict.
+        strict : bool
+            If True, raise on missing/unexpected keys.
+        """
+        old_codes = state_dict.get("auto_decoder_codes.weight")
+        new_codes = self.auto_decoder_codes.weight
+
+        if old_codes is not None and old_codes.shape[0] != new_codes.shape[0]:
+            # Old format: (n_scenes, d_cond) -> need to remap
+            logger.info(
+                "Remapping codes: old %s -> new %s",
+                old_codes.shape, new_codes.shape,
+            )
+            remapped = torch.randn_like(new_codes.data) * 0.01
+            n_old = old_codes.shape[0]
+            for si in range(min(n_old, self.n_scenes)):
+                start, end = self._scene_code_ranges[si]
+                # Copy old code to first slot
+                remapped[start] = old_codes[si]
+                # Extra codes get small random perturbation of the original
+                for ci in range(start + 1, end):
+                    remapped[ci] = old_codes[si] + torch.randn_like(old_codes[si]) * 0.001
+            state_dict = dict(state_dict)
+            state_dict["auto_decoder_codes.weight"] = remapped
+
+        self.load_state_dict(state_dict, strict=strict)
 
 
 # ---------------------------------------------------------------------------
@@ -507,8 +616,22 @@ def helmholtz_residual(
     x_eval = x_rcv.detach().clone().requires_grad_(True)  # (B, 2)
 
     # Predict SDF at evaluation points (differentiable in x_eval)
-    z_exp = z.unsqueeze(0).expand(B, -1)  # (B, d_cond)
-    sdf_eval = sdf_decoder(x_eval, z_exp)  # (B, 1)
+    # Handle multi-code z: (K, d_cond) -> smooth-min composition
+    if z.dim() == 1:
+        z_exp = z.unsqueeze(0).expand(B, -1)  # (B, d_cond)
+        sdf_eval = sdf_decoder(x_eval, z_exp)  # (B, 1)
+    else:
+        # z: (K, d_cond) -- multi-body
+        K = z.shape[0]
+        sdf_parts = []
+        for ki in range(K):
+            z_k = z[ki].unsqueeze(0).expand(B, -1)  # (B, d_cond)
+            sdf_parts.append(sdf_decoder(x_eval, z_k))  # (B, 1)
+        sdf_cat = torch.cat(sdf_parts, dim=-1)  # (B, K)
+        alpha = 50.0
+        sdf_eval = -torch.logsumexp(
+            -alpha * sdf_cat, dim=-1, keepdim=True
+        ) / alpha  # (B, 1)
 
     # Forward model prediction (differentiable in x_eval through sdf and coords)
     t_pred = forward_model.forward_from_coords(
@@ -616,6 +739,8 @@ def build_inverse_model(
     n_fourier: int = 128,
     fourier_sigma: float = 10.0,
     dropout: float = 0.05,
+    multi_body_scene_ids: Optional[Dict[int, int]] = None,
+    inv_scene_id_map: Optional[Dict[int, int]] = None,
 ) -> InverseModel:
     """Build the Phase 3 inverse model.
 
@@ -635,11 +760,33 @@ def build_inverse_model(
         Fourier feature bandwidth [m^-1].
     dropout : float
         Dropout rate in SDF decoder.
+    multi_body_scene_ids : dict, optional
+        Mapping {scene_id: K} for multi-body scenes.
+        E.g., {12: 2} means scene 12 gets 2 latent codes.
+    inv_scene_id_map : dict, optional
+        Mapping {scene_id: scene_idx} to convert scene_ids to 0-indexed.
+        Required when multi_body_scene_ids uses scene_ids (not indices).
 
     Returns
     -------
     model : InverseModel
     """
+    # Convert multi_body_scene_ids (global IDs) to codes_per_scene (0-indexed)
+    codes_per_scene: Optional[Dict[int, int]] = None
+    if multi_body_scene_ids:
+        if inv_scene_id_map is None:
+            raise ValueError(
+                "inv_scene_id_map required when multi_body_scene_ids is set"
+            )
+        codes_per_scene = {}
+        for sid, k in multi_body_scene_ids.items():
+            if sid in inv_scene_id_map:
+                codes_per_scene[inv_scene_id_map[sid]] = k
+            else:
+                logger.warning(
+                    "Multi-body scene_id %d not in scene map, skipping", sid,
+                )
+
     model = InverseModel(
         n_scenes=n_scenes,
         d_cond=d_cond,
@@ -648,16 +795,22 @@ def build_inverse_model(
         n_fourier=n_fourier,
         fourier_sigma=fourier_sigma,
         dropout=dropout,
+        codes_per_scene=codes_per_scene,
     )
 
     n_params = model.count_parameters()
+    multi_str = ""
+    if codes_per_scene:
+        multi_str = f", multi-body: {codes_per_scene}"
     logger.info(
         "InverseModel built: %d parameters (%.2f MB), "
-        "%d scenes x %d-dim codes",
+        "%d scenes x %d-dim codes, %d total codes%s",
         n_params,
         n_params * 4 / 1e6,
         n_scenes,
         d_cond,
+        model._total_codes,
+        multi_str,
     )
 
     return model

@@ -375,6 +375,7 @@ def main() -> None:
     )
 
     # Build inverse model
+    inv_scene_id_map_raw = {int(k): v for k, v in cfg["inv_scene_id_map"].items()}
     inverse_model = build_inverse_model(
         n_scenes=cfg["n_scenes"],
         d_cond=cfg["d_cond"],
@@ -383,14 +384,14 @@ def main() -> None:
         n_fourier=cfg.get("n_fourier", 128),
         fourier_sigma=cfg.get("fourier_sigma", 10.0),
         dropout=cfg.get("dropout", 0.05),
+        multi_body_scene_ids=cfg.get("multi_body_scene_ids"),
+        inv_scene_id_map=inv_scene_id_map_raw,
     )
     inverse_model.load_state_dict(ckpt["model_state_dict"])
     inverse_model = inverse_model.to(device)
     inverse_model.eval()
 
-    inv_scene_id_map = cfg["inv_scene_id_map"]
-    # Handle JSON key type (may be strings after save/load)
-    inv_scene_id_map = {int(k): v for k, v in inv_scene_id_map.items()}
+    inv_scene_id_map = inv_scene_id_map_raw
 
     # ------------------------------------------------------------------
     # Load frozen forward model

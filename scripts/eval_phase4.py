@@ -610,6 +610,7 @@ def load_models(
         ckpt_path.name, ckpt["epoch"], ckpt["best_mean_iou"],
     )
 
+    inv_scene_id_map = {int(k): v for k, v in cfg["inv_scene_id_map"].items()}
     inverse_model = build_inverse_model(
         n_scenes=cfg["n_scenes"],
         d_cond=cfg["d_cond"],
@@ -618,12 +619,12 @@ def load_models(
         n_fourier=cfg.get("n_fourier", 128),
         fourier_sigma=cfg.get("fourier_sigma", 10.0),
         dropout=cfg.get("dropout", 0.05),
+        multi_body_scene_ids=cfg.get("multi_body_scene_ids"),
+        inv_scene_id_map=inv_scene_id_map,
     )
     inverse_model.load_state_dict(ckpt["model_state_dict"])
     inverse_model = inverse_model.to(device)
     inverse_model.eval()
-
-    inv_scene_id_map = {int(k): v for k, v in cfg["inv_scene_id_map"].items()}
 
     # Forward model (frozen)
     fwd_ckpt_name = args.forward_ckpt or cfg["forward_checkpoint"]

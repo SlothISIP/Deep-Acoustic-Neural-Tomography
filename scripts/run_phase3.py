@@ -342,6 +342,7 @@ def train_scene_step(
     # 4) Latent code regularization (all stages)
     # ------------------------------------------------------------------
     z = inverse_model.get_code(scene_idx)
+    # z is (d_cond,) for K=1, (K, d_cond) for K>1
     l_z = (z ** 2).mean()
     total_loss = total_loss + config["w_z_reg"] * l_z
     losses["z_reg"] = l_z.item()
@@ -451,6 +452,10 @@ def main() -> None:
         "--resume-from", type=str, default=None,
         help="Resume from specific checkpoint name (without .pt), e.g. best_phase3",
     )
+    parser.add_argument(
+        "--multi-body", type=str, default=None,
+        help="Multi-body scene specs: 'scene_id:K,...' (e.g., '12:2' for S12 with 2 codes)",
+    )
     # Architecture
     parser.add_argument("--d-cond", type=int, default=DEFAULTS["d_cond"])
     parser.add_argument("--d-hidden", type=int, default=DEFAULTS["d_hidden"])
@@ -502,6 +507,17 @@ def main() -> None:
     inv_scene_id_map = {sid: idx for idx, sid in enumerate(scene_ids_sorted)}
 
     # ------------------------------------------------------------------
+    # Parse multi-body scene specs
+    # ------------------------------------------------------------------
+    multi_body_scene_ids: Optional[Dict[int, int]] = None
+    if args.multi_body:
+        multi_body_scene_ids = {}
+        for spec in args.multi_body.split(","):
+            sid_str, k_str = spec.strip().split(":")
+            multi_body_scene_ids[int(sid_str)] = int(k_str)
+        logger.info("Multi-body scenes: %s", multi_body_scene_ids)
+
+    # ------------------------------------------------------------------
     # Build inverse model
     # ------------------------------------------------------------------
     inverse_model = build_inverse_model(
@@ -512,6 +528,8 @@ def main() -> None:
         n_fourier=DEFAULTS["n_fourier"],
         fourier_sigma=DEFAULTS["fourier_sigma"],
         dropout=DEFAULTS["dropout"],
+        multi_body_scene_ids=multi_body_scene_ids,
+        inv_scene_id_map=inv_scene_id_map,
     ).to(device)
 
     n_params = inverse_model.count_parameters()
@@ -575,6 +593,7 @@ def main() -> None:
         "stage_boundaries": STAGE_BOUNDARIES,
         "no_helmholtz": args.no_helmholtz,
         "boundary_oversample": args.boundary_oversample,
+        "multi_body_scene_ids": multi_body_scene_ids,
     }
 
     # ------------------------------------------------------------------
@@ -595,9 +614,20 @@ def main() -> None:
             ckpt_path = CHECKPOINT_DIR / latest_ckpt_name
         if ckpt_path.exists():
             ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
-            inverse_model.load_state_dict(ckpt["model_state_dict"])
-            optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-            scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+            # Use compat loader to handle old->new code table remapping
+            inverse_model.load_state_dict_compat(ckpt["model_state_dict"])
+            # Only load optimizer/scheduler if code table size matches
+            old_codes = ckpt["model_state_dict"].get("auto_decoder_codes.weight")
+            new_codes = inverse_model.auto_decoder_codes.weight
+            if old_codes is not None and old_codes.shape[0] == new_codes.shape[0]:
+                optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+                scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+            else:
+                logger.info(
+                    "Code table size changed (%d -> %d), resetting optimizer",
+                    old_codes.shape[0] if old_codes is not None else 0,
+                    new_codes.shape[0],
+                )
             start_epoch = ckpt["epoch"] + 1
             best_mean_iou = ckpt["best_mean_iou"]
             logger.info(

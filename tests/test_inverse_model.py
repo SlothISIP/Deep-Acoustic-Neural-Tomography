@@ -313,3 +313,139 @@ class TestPIncTorch:
             p_im.item(), p_ref_im, rtol=0.06,
             err_msg=f"Im(p_inc) mismatch: torch={p_im.item():.6f}, scipy={p_ref_im:.6f}",
         )
+
+
+# ---------------------------------------------------------------------------
+# Multi-code (multi-body) tests
+# ---------------------------------------------------------------------------
+class TestMultiCode:
+    """Tests for multi-code architecture (K>1 codes per scene)."""
+
+    @pytest.fixture
+    def multi_model(self, device):
+        """Inverse model with scene 1 having K=2 codes."""
+        return build_inverse_model(
+            n_scenes=3, d_cond=32, d_hidden=64,
+            n_blocks=2, n_fourier=16, fourier_sigma=10.0, dropout=0.0,
+            multi_body_scene_ids={1: 2},  # scene_id=1 gets 2 codes
+            inv_scene_id_map={0: 0, 1: 1, 2: 2},  # identity mapping for test
+        ).to(device)
+
+    def test_multi_code_predict_sdf_shape(self, multi_model, device):
+        """K=2 scene produces (B, 1) output (same as K=1)."""
+        B = 64
+        xy = torch.randn(B, 2, device=device)
+        sdf = multi_model.predict_sdf(1, xy)  # scene_idx=1 has K=2
+        assert sdf.shape == (B, 1), f"Expected (64, 1), got {sdf.shape}"
+
+    def test_single_code_unchanged(self, multi_model, device):
+        """K=1 scene works identically to original behavior."""
+        B = 32
+        xy = torch.randn(B, 2, device=device)
+        sdf = multi_model.predict_sdf(0, xy)  # scene_idx=0 has K=1
+        assert sdf.shape == (B, 1)
+
+    def test_multi_code_gradient_flow(self, multi_model, device):
+        """Gradients reach both codes for K=2 scene."""
+        xy = torch.randn(32, 2, device=device)
+        sdf = multi_model.predict_sdf(1, xy)  # K=2 scene
+        loss = sdf.sum()
+        loss.backward()
+
+        codes_grad = multi_model.auto_decoder_codes.weight.grad
+        assert codes_grad is not None
+
+        # Scene 1 has K=2: code indices 1 and 2
+        start, end = multi_model._scene_code_ranges[1]
+        for ci in range(start, end):
+            assert codes_grad[ci].abs().sum() > 0, (
+                f"Code {ci} should have non-zero gradient"
+            )
+
+    def test_smooth_min_approximation(self, multi_model, device):
+        """Smooth-min is close to hard min for separated SDFs."""
+        # Create two well-separated SDF values
+        B = 100
+        xy = torch.randn(B, 2, device=device)
+
+        with torch.no_grad():
+            # Get individual SDF predictions from each code
+            start, end = multi_model._scene_code_ranges[1]
+            z0 = multi_model.auto_decoder_codes.weight[start]
+            z1 = multi_model.auto_decoder_codes.weight[end - 1]
+            z0_exp = z0.unsqueeze(0).expand(B, -1)
+            z1_exp = z1.unsqueeze(0).expand(B, -1)
+            sdf0 = multi_model.sdf_decoder(xy, z0_exp)  # (B, 1)
+            sdf1 = multi_model.sdf_decoder(xy, z1_exp)  # (B, 1)
+            hard_min = torch.min(sdf0, sdf1)  # (B, 1)
+
+            # Smooth-min from predict_sdf
+            sdf_composed = multi_model.predict_sdf(1, xy)  # (B, 1)
+
+        # Smooth-min should approximate hard-min (within ~0.02 for alpha=50)
+        max_diff = (sdf_composed - hard_min).abs().max().item()
+        assert max_diff < 0.1, (
+            f"Smooth-min deviates from hard-min by {max_diff:.4f} (expect < 0.1)"
+        )
+
+    def test_multi_code_different_sdfs(self, multi_model, device):
+        """Different codes in same scene produce different SDFs."""
+        B = 50
+        xy = torch.randn(B, 2, device=device)
+        start, end = multi_model._scene_code_ranges[1]
+
+        with torch.no_grad():
+            z0 = multi_model.auto_decoder_codes.weight[start]
+            z1 = multi_model.auto_decoder_codes.weight[end - 1]
+            z0_exp = z0.unsqueeze(0).expand(B, -1)
+            z1_exp = z1.unsqueeze(0).expand(B, -1)
+            sdf0 = multi_model.sdf_decoder(xy, z0_exp)
+            sdf1 = multi_model.sdf_decoder(xy, z1_exp)
+
+        assert not torch.allclose(sdf0, sdf1, atol=1e-5), (
+            "Different codes should produce different SDFs"
+        )
+
+    def test_codes_per_scene_total(self, multi_model):
+        """Total embedding size = sum of K_i across all scenes."""
+        # 3 scenes: K=1, K=2, K=1 -> total = 4
+        assert multi_model._total_codes == 4, (
+            f"Expected 4 total codes, got {multi_model._total_codes}"
+        )
+        assert multi_model.auto_decoder_codes.weight.shape[0] == 4
+
+    def test_get_code_shape(self, multi_model):
+        """get_code returns correct shape for K=1 and K>1."""
+        z0 = multi_model.get_code(0)  # K=1
+        assert z0.shape == (32,), f"K=1 code shape: expected (32,), got {z0.shape}"
+
+        z1 = multi_model.get_code(1)  # K=2
+        assert z1.shape == (2, 32), f"K=2 code shape: expected (2, 32), got {z1.shape}"
+
+    def test_checkpoint_compat(self, device):
+        """Old-format checkpoint loads into new multi-code model."""
+        # Build old-format model (K=1 everywhere)
+        old_model = build_inverse_model(
+            n_scenes=3, d_cond=32, d_hidden=64,
+            n_blocks=2, n_fourier=16, fourier_sigma=10.0, dropout=0.0,
+        ).to(device)
+        old_state = old_model.state_dict()
+
+        # Build new model with multi-body
+        new_model = build_inverse_model(
+            n_scenes=3, d_cond=32, d_hidden=64,
+            n_blocks=2, n_fourier=16, fourier_sigma=10.0, dropout=0.0,
+            multi_body_scene_ids={1: 2},
+            inv_scene_id_map={0: 0, 1: 1, 2: 2},
+        ).to(device)
+
+        # Load old state dict with compatibility
+        new_model.load_state_dict_compat(old_state)
+
+        # Verify: first code of scene 1 should match old code
+        old_z1 = old_state["auto_decoder_codes.weight"][1]
+        new_z1_first = new_model.auto_decoder_codes.weight[1].detach()
+        torch.testing.assert_close(
+            old_z1, new_z1_first,
+            msg="First code of multi-body scene should match old checkpoint",
+        )

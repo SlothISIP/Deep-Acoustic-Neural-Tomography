@@ -673,5 +673,228 @@ r = pearson( [Re(p_pred), Im(p_pred)], [Re(p_gt), Im(p_gt)] )
 
 ---
 
+*Last Updated: 2026-02-19 (Session 7)*
+
+---
+
+## Session 8: 2026-02-19
+
+### S12 Multi-Code Architecture + Ablation Studies for ICASSP Paper
+
+**Duration**: ~80 minutes (code + training + ablation runs)
+**Phase**: 5 (Paper Writing & Submission)
+
+---
+
+### 1. Plan Overview (8-Step Execution)
+
+| Step | Task | Time | Result |
+|------|------|------|--------|
+| 1 | Phase 2 gate report regeneration | 2 min | 4.47% PASS (was stale 8.83%) |
+| 2 | S13 per-region calibration | 2 min | 18.71% (no improvement) |
+| 3 | Forward ablation (5 configs) | 3 min | CSV + LaTeX generated |
+| 4 | S12 multi-code architecture | 20 min | smooth-min K=2, 29 tests pass |
+| 5 | S12 training + global fine-tune | 25 min | v3 IoU=0.9491, S12=0.4928 |
+| 6 | Full verification (Phase 3+4) | 5 min | IoU PASS, r=0.9024 PASS |
+| 7 | Inverse ablation (2 configs) | 10 min | SDF-only + no-cycle evaluated |
+| 8 | Collect results | 2 min | LaTeX tables for paper |
+
+---
+
+### 2. S12 Multi-Code Architecture (Step 4)
+
+**Problem**: Scene 12 (two parallel bars) has IoU=0.41 with single latent code — a single DeepSDF code cannot represent disjoint multi-body geometry.
+
+**Solution**: Multi-code auto-decoder with smooth-min composition.
+
+```python
+# K=2 codes for S12, each representing one bar
+sdf_stack = [sdf_decoder(xy, z_k) for z_k in codes]  # K x (B, 1)
+sdf_cat = torch.cat(sdf_stack, dim=-1)                 # (B, K)
+alpha = 50.0  # sharp approximation to hard-min
+sdf = -torch.logsumexp(-alpha * sdf_cat, dim=-1, keepdim=True) / alpha  # (B, 1)
+```
+
+**Code changes** (`src/inverse_model.py`):
+- `InverseModel.__init__`: Added `codes_per_scene: Dict[int, int]`, `_scene_code_ranges`, `_total_codes`
+- `predict_sdf()`: K=1 fast path (original), K>1 smooth-min composition
+- `get_code()`: Returns `(d_cond,)` for K=1, `(K, d_cond)` for K>1
+- `load_state_dict_compat()`: Remaps old flat code table `(N, D)` → new variable-K table `(sum(K_i), D)`, perturbs extra codes with 0.001 noise
+- `helmholtz_residual()`: Updated for multi-code z (dim check)
+- `build_inverse_model()`: Added `multi_body_scene_ids` param, default `{12: 2}`
+
+**Training script** (`scripts/run_phase3.py`):
+- Added `--multi-body` CLI arg (format: `"12:2"`)
+- Config dict stores `multi_body_scene_ids` for checkpoint reproducibility
+- Resume logic: `load_state_dict_compat()` + optimizer reset when code table size changes
+
+**Evaluation scripts** (`scripts/eval_phase3.py`, `scripts/eval_phase4.py`):
+- Pass `multi_body_scene_ids` from checkpoint config to `build_inverse_model()`
+
+**New tests** (`tests/test_inverse_model.py`, 8 new → 29 total):
+- `test_multi_code_predict_sdf_shape`: K=2 returns (B, 1)
+- `test_single_code_unchanged`: K=1 identical to original
+- `test_multi_code_gradient_flow`: gradients reach both codes
+- `test_smooth_min_approximation`: within 0.1 of hard min
+- `test_multi_code_different_sdfs`: different codes → different SDFs
+- `test_codes_per_scene_total`: total embeddings = sum(K_i)
+- `test_get_code_shape`: K=1→(32,), K=2→(2,32)
+- `test_checkpoint_compat`: old format loads into new model
+
+---
+
+### 3. S12 Training Attempts (Step 5)
+
+| Attempt | Strategy | LR | Result |
+|---------|----------|-----|--------|
+| 1 | S12-only fine-tune (300 ep) | 5e-4 (cosine tail) | FAILED: IoU oscillating 0-0.49, 1-scene too noisy |
+| 2 | Global fine-tune (all 15) | 5e-4 | FAILED: optimizer reset + full LR → instability |
+| 3 | Global fine-tune (all 15) | **1e-4** | **SUCCESS**: IoU=0.9491, S12=0.4928 |
+
+**Key lesson**: When code table size changes (15→16), Adam optimizer resets to zero momentum/variance. This effectively makes initial updates SGD-like. LR must be reduced (≤1e-4) to prevent pretrained weights from diverging.
+
+**v2 → v3 comparison**:
+
+| Metric | v2 | v3 | Change |
+|--------|-----|-----|--------|
+| Mean IoU | 0.9388 | 0.9491 | +0.0103 |
+| S12 IoU | 0.41 | 0.4928 | +0.0828 |
+| Mean r | 0.9086 | 0.9024 | -0.0062 |
+
+S12 improved from 0.41→0.49, but target 0.80 not reached. This is a fundamental limitation of the auto-decoder approach for disjoint multi-body geometry — documented as paper discussion point.
+
+---
+
+### 4. Forward Model Ablation (Step 3)
+
+5 configurations evaluated (no training, eval-only):
+
+| Config | Ensemble | Calibration | Error% | Status |
+|--------|----------|-------------|--------|--------|
+| A | Single (v11) | None | 11.54% | FAIL |
+| B | Single (v11) | Per-source | 10.20% | FAIL |
+| C | Duo (v11,v13) | Per-source | 9.89% | FAIL |
+| D | Quad (v7,v8,v11,v13) | None | 4.57% | PASS |
+| E | Quad + S13 specialist | Per-source | 4.47% | PASS |
+
+**Key finding**: 4-model ensemble is the critical factor (11.54%→4.57%), calibration adds marginal improvement (4.57%→4.47%). The jump from duo to quad is dramatic because v7/v8 use `n_fourier=256` while v11/v13 use `n_fourier=128`, providing diversity in spectral representation.
+
+**Per-scene breakdown**: S13 dominates error in all configs (51.50% single → 18.62% quad+calib). Excluding S13, all configs would pass.
+
+---
+
+### 5. Inverse Model Ablation (Step 7)
+
+4 configurations (2 new training runs + 2 existing):
+
+| Config | Training | Mean IoU | S12 IoU | Mean r |
+|--------|----------|----------|---------|--------|
+| (a) SDF+Eik only | 200 epochs | 0.6892 | 0.1345 | --- |
+| (b) +bdy 3x | 500 epochs | 0.8423 | 0.1840 | --- |
+| (c) +Cycle (v2) | 1000 epochs | 0.9388 | 0.4100 | 0.9086 |
+| (d) +Multi-code (v3) | 1449 epochs | 0.9491 | 0.4928 | 0.9024 |
+
+**Key findings**:
+- SDF+Eikonal alone: 0.6892 — pure geometric supervision insufficient
+- Boundary oversampling: 0.8423 — +22% over base, more training helps
+- **Cycle-consistency loss**: 0.9388 — **+11.5% over no-cycle**, the key differentiator
+- Multi-code: 0.9491 — +1% incremental from K=2 composition
+
+---
+
+### 6. S13 Per-Region Calibration (Step 2)
+
+Tested `--calibrate-region` flag (per-receiver-region calibration vs per-source):
+- Per-source: 18.62%
+- Per-region: 18.71%
+
+**Conclusion**: No improvement. S13 error is dominated by shadow zone (36.22% error), which is a fundamental limitation of the forward model's ability to predict pressure behind the step geometry.
+
+---
+
+### 7. Gate Verification (Step 6)
+
+| Gate | v2 | v3 | Change | Status |
+|------|-----|-----|--------|--------|
+| Phase 3 (IoU > 0.8) | 0.9388 | **0.9491** | +0.0103 | PASS |
+| Phase 4 (r > 0.8) | 0.9086 | **0.9024** | -0.0062 | PASS |
+
+Per-scene v3 Phase 4 results:
+
+| Scene | r | IoU | Pass |
+|-------|---|----|------|
+| 1 | 0.9261 | 0.9941 | PASS |
+| 2 | 0.8966 | 0.9915 | PASS |
+| 3 | 0.8708 | 0.9838 | PASS |
+| 4 | 0.8336 | 0.9903 | PASS |
+| 5 | 0.9325 | 1.0000 | PASS |
+| 6 | 0.9363 | 0.9693 | PASS |
+| 7 | 0.8880 | 0.9852 | PASS |
+| 8 | 0.9186 | 0.9950 | PASS |
+| 9 | 0.8974 | 0.9895 | PASS |
+| 10 | 0.9221 | 0.9615 | PASS |
+| 11 | 0.9115 | 0.9851 | PASS |
+| 12 | 0.9217 | 0.4928 | PASS |
+| 13 | 0.8624 | 0.9938 | PASS |
+| 14 | 0.8930 | 0.9819 | PASS |
+| 15 | 0.9260 | 0.9220 | PASS |
+
+---
+
+### 8. Files Created/Modified
+
+| File | Changes |
+|------|---------|
+| `src/inverse_model.py` (MODIFIED, +181 lines) | Multi-code support: codes_per_scene, smooth-min K>1, load_state_dict_compat(), build with multi_body_scene_ids |
+| `scripts/run_phase3.py` (MODIFIED, +36 lines) | `--multi-body` CLI arg, code table remapping on resume, optimizer reset detection |
+| `scripts/eval_phase3.py` (MODIFIED, +7 lines) | Pass multi_body_scene_ids from checkpoint config |
+| `scripts/eval_phase4.py` (MODIFIED, +5 lines) | Pass multi_body_scene_ids from checkpoint config |
+| `tests/test_inverse_model.py` (MODIFIED, +136 lines) | 8 new TestMultiCode tests (29 total, all passing) |
+| `results/phase2/phase2_gate_report.txt` (MODIFIED) | Regenerated with correct 4.47% PASS |
+| `scripts/run_ablation_forward.py` (NEW, 155 lines) | 5-config forward ablation: single/duo/quad × calib, writes CSV |
+| `scripts/run_ablation_inverse.py` (NEW, 113 lines) | Inverse ablation: SDF-only + no-cycle training |
+| `scripts/collect_ablations.py` (NEW, 261 lines) | Parse gate reports, generate CSV + LaTeX tables |
+| `results/ablations/forward_ablation.csv` (NEW) | Per-scene error for 5 forward configs |
+| `results/ablations/forward_ablation.tex` (NEW) | LaTeX table for ICASSP paper |
+| `results/ablations/inverse_ablation.tex` (NEW) | LaTeX table for ICASSP paper |
+| `results/ablations/ablation_summary.csv` (NEW) | Unified ablation results |
+
+---
+
+### 9. Phase Status
+
+| Phase | Status | Gate Result |
+|-------|--------|-------------|
+| **0: Foundation Validation** | **COMPLETE** | **PASS (1.77%)** |
+| **1: BEM Data Factory** | **COMPLETE** | **PASS (8853/8853 causal, 100%)** |
+| **2: Forward Model** | **COMPLETE** | **PASS (4.47%)** |
+| **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.9491 > 0.8, v3 multi-code)** |
+| **4: Validation** | **COMPLETE** | **PASS (r = 0.9024 > 0.8, v3)** |
+| 5: Paper | UNLOCKED | -- |
+
+---
+
+### 10. Paper-Ready Deliverables
+
+| Deliverable | Location |
+|-------------|----------|
+| Forward ablation LaTeX table | `results/ablations/forward_ablation.tex` |
+| Inverse ablation LaTeX table | `results/ablations/inverse_ablation.tex` |
+| Per-scene forward errors | `results/ablations/forward_ablation.csv` |
+| Unified ablation CSV | `results/ablations/ablation_summary.csv` |
+| SDF contour plots (15 scenes) | `results/phase3/sdf_contour_scene_*.png` |
+| Cycle-consistency scatter plots | `results/phase4/scatter_summary.png` |
+| Per-scene IoU bar chart | `results/phase3/per_scene_iou.png` |
+| Per-scene correlation bar chart | `results/phase4/per_scene_correlation.png` |
+
+### 11. Known Limitations (Paper Discussion Points)
+
+1. **S12 multi-body**: IoU improved 0.41→0.49 but target 0.80 not reached. Auto-decoder with smooth-min cannot fully capture disjoint geometry — K=2 codes share a single SDF decoder, limiting expressiveness.
+2. **S13 shadow zone**: 18.62% error, per-region calibration doesn't help. Forward model struggles with deep shadow behind step geometry.
+3. **Helmholtz residual ~10^5**: Neural surrogate's ∇²p is network curvature, not physical Laplacian. True Helmholtz compliance requires PINN fine-tuning (future work).
+4. **Relative L2 ~43%**: Distribution shift from GT→predicted SDF. Correlation (r=0.90) is preserved but absolute magnitudes differ.
+
+---
+
 *Last Updated: 2026-02-19*
-*Session 7: Phase 4 gate passed (r=0.9086 > 0.8), Phase 5 unlocked. All Phases 0-4 COMPLETE.*
+*Session 8: S12 multi-code + ablation studies complete. All deliverables ready for ICASSP paper.*

@@ -397,62 +397,44 @@ Requires Python 3.9+ and OpenCL drivers.
 | **0: Foundation Validation** | **COMPLETE** | **PASS (1.77%)** |
 | **1: BEM Data Factory** | **COMPLETE** | **PASS (8853/8853 causal, 100%)** |
 | **2: Forward Model** | **COMPLETE** | **PASS (4.47%)** |
-| **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.9388 > 0.8)** |
-| **4: Validation** | **COMPLETE** | **PASS (r = 0.9086 > 0.8)** |
+| **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.9491 > 0.8, v3 multi-code)** |
+| **4: Validation** | **COMPLETE** | **PASS (r = 0.9024 > 0.8, v3)** |
 | 5: Paper | UNLOCKED | -- |
 
-### Session 7: Phase 4 Cycle-Consistency Gate PASS (2026-02-19)
+### Session 8: S12 Multi-Code + Ablation Studies (2026-02-19)
 
 **Changes**:
-- Created `scripts/eval_phase4.py`: full cycle-consistency evaluation pipeline
-- Cycle path: z → SDFDecoder(rcv_pos) → sdf → ForwardModel → T → p_pred vs p_gt(BEM)
-- Pearson r computed on stacked [Re, Im] vectors per scene
-- Exact incident field (scipy.special.hankel1) for evaluation accuracy
-- Visualizations: per-scene bar chart, frequency correlation profile, scatter plots
+- S12 multi-code architecture (K=2 codes, smooth-min composition alpha=50)
+- Global fine-tune v2→v3 (LR=1e-4): IoU 0.9388→0.9491, S12 0.41→0.49
+- Forward ablation: 5 configs (single→quad, +/-calibration)
+- Inverse ablation: 4 configs (SDF-only→full+multi-code)
+- LaTeX tables generated for ICASSP paper
+- 29 unit tests (8 new multi-code tests), all passing
 
-**Gate Result**: Mean Pearson r = 0.9086 > 0.8 PASS (15/15 scenes pass individually)
+**Forward Ablation** (key result: ensemble is critical):
 
-**Per-Scene r**: S1:0.929 | S2:0.904 | S3:0.883 | S4:0.853 | S5:0.937 | S6:0.941 | S7:0.906 | S8:0.918 | S9:0.908 | S10:0.927 | S11:0.913 | S12:0.925 | S13:0.860 | S14:0.893 | S15:0.932
+| Config | Error% |
+|--------|--------|
+| Single (v11) | 11.54% |
+| Quad ensemble + calib | **4.47%** |
 
-**Key Findings**:
-- S12 (IoU=0.41) still achieves r=0.925: forward model robust to SDF errors (SDF is 1 of 9 features)
-- Relative L2 error ~42%: distribution shift from GT→predicted SDF, but correlation preserved
-- Frequency-uniform: Low 0.911, Mid 0.906, High 0.906 (no band-dependent degradation)
-- Total: 1.77M observations across 15 scenes, 6.8s evaluation time
+**Inverse Ablation** (key result: cycle loss +11.5% IoU):
+
+| Config | Mean IoU |
+|--------|----------|
+| SDF+Eik only | 0.6892 |
+| +Cycle (v2) | 0.9388 |
+| +Multi-code (v3) | **0.9491** |
 
 | File | Change |
 |------|--------|
-| `scripts/eval_phase4.py` | **NEW** — cycle-consistency evaluation + gate check + plots |
-| `CLAUDE.md` | Phase 4 COMPLETE, Phase 5 UNLOCKED |
-
-### Session 6: Phase 3 Inverse Model Complete (2026-02-19)
-
-**Changes**:
-- Implemented inverse model (`src/inverse_model.py`): SDFDecoder (DeepSDF auto-decoder) with 15 per-scene latent codes
-- Inverse dataset (`src/inverse_dataset.py`): per-scene structured data loader for SDF + pressure observations
-- Training pipeline (`scripts/run_phase3.py`): 3-stage training (SDF+Eikonal → +Cycle → +Helmholtz)
-- Evaluation pipeline (`scripts/eval_phase3.py`): IoU + Helmholtz gate check + SDF contour visualization
-- Unit tests (`tests/test_inverse_model.py`): 21 tests covering SDF decoder, losses, IoU, gradient flow, p_inc
-- **Critical fix**: Helmholtz loss destroyed SDF quality (IoU 0.82→0.19); disabled Stage 3 + added boundary oversampling
-- Phase 3 gate: IoU 0.9388 > 0.8 PASS (14/15 scenes, only S12 dual-bar fails at 0.41)
-
-**Phase 3 Architecture**:
-- SDFDecoder: FourierFeatureEncoder(128 dim, σ=10) + 6×ResidualBlock(256) + auto-decoder codes(15×256)
-- Frozen Phase 2 forward model (best_v11) for cycle-consistency
-- v2 retrain: --no-helmholtz --boundary-oversample 3.0 (7.2 min vs 76 min, IoU +13.8%)
-
-**Per-Scene IoU**: S1-S4: 0.99+ | S5: 0.94 | S6-S11: 0.96-0.98 | S12: 0.41 | S13-S15: 0.95-0.99
-
-### Key Files Modified
-
-| File | Change |
-|------|--------|
-| `src/inverse_model.py` | SDFDecoder + InverseModel + losses (eikonal, cycle, helmholtz, IoU) |
-| `src/inverse_dataset.py` | Per-scene structured data loader (SDF grid + pressure) |
-| `scripts/run_phase3.py` | 3-stage training + --no-helmholtz + --boundary-oversample |
-| `scripts/eval_phase3.py` | Gate evaluation: IoU + Helmholtz + contour plots |
-| `tests/test_inverse_model.py` | 21 unit tests (all passing) |
-| `src/forward_model.py` | Added scene_ids param to forward_from_coords() |
+| `src/inverse_model.py` | Multi-code support (K>1, smooth-min, compat loading) |
+| `scripts/run_phase3.py` | `--multi-body` CLI arg, code table remapping |
+| `scripts/eval_phase3.py`, `eval_phase4.py` | Multi-body passthrough |
+| `scripts/run_ablation_forward.py` | **NEW** — 5-config forward ablation |
+| `scripts/run_ablation_inverse.py` | **NEW** — inverse component ablation |
+| `scripts/collect_ablations.py` | **NEW** — CSV + LaTeX table generation |
+| `tests/test_inverse_model.py` | 8 new multi-code tests (29 total) |
 
 ---
 
@@ -481,16 +463,20 @@ project_root/
 │   ├── eval_phase2.py         # Phase 2 evaluation + gate check
 │   ├── run_phase3.py          # Phase 3 inverse model training
 │   ├── eval_phase3.py         # Phase 3 evaluation + gate check
-│   └── eval_phase4.py         # Phase 4 cycle-consistency gate
+│   ├── eval_phase4.py         # Phase 4 cycle-consistency gate
+│   ├── run_ablation_forward.py # Forward model ablation (5 configs)
+│   ├── run_ablation_inverse.py # Inverse model ablation
+│   └── collect_ablations.py   # Ablation results → CSV + LaTeX
 ├── tests/                     # Tests + diagnostics
-│   ├── test_inverse_model.py  # Phase 3 unit tests (21 tests)
+│   ├── test_inverse_model.py  # Phase 3 unit tests (29 tests)
 │   └── diagnostics/           # Phase 0 debug scripts (archived)
 ├── results/                   # Output results
 │   ├── phase0/                # Phase 0 validation outputs
 │   ├── phase1/                # Phase 1 outputs
 │   ├── phase2/                # Phase 2 evaluation outputs
 │   ├── phase3/                # Phase 3 SDF contours + gate report
-│   └── phase4/                # Phase 4 cycle-consistency outputs
+│   ├── phase4/                # Phase 4 cycle-consistency outputs
+│   └── ablations/             # Ablation CSV + LaTeX tables
 ├── data/                      # Training data
 │   └── phase1/                # HDF5 BEM data (15 scenes)
 └── .claude/skills/            # Orca Mode skill definitions
@@ -512,7 +498,10 @@ project_root/
 - `src/dataset.py`: HDF5 → PyTorch dataset with multi-scene support (Phase 2)
 - `src/inverse_model.py`: SDFDecoder + InverseModel + loss functions (Phase 3)
 - `src/inverse_dataset.py`: Per-scene structured data loader (Phase 3)
-- `tests/test_inverse_model.py`: 21 unit tests for Phase 3 (all passing)
+- `tests/test_inverse_model.py`: 29 unit tests for Phase 3 (all passing)
+- `scripts/run_ablation_forward.py`: Forward model ablation (5 ensemble/calib configs)
+- `scripts/run_ablation_inverse.py`: Inverse model component ablation
+- `scripts/collect_ablations.py`: Ablation results → CSV + LaTeX tables
 - `docs/Project_history.md`: Full session log (append-only)
 
-**Files**: 27 Python | **Lines**: ~13,490 | **History**: See `docs/Project_history.md`
+**Files**: 30 Python | **Lines**: ~12,234 | **History**: See `docs/Project_history.md`
