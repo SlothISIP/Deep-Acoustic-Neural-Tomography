@@ -184,19 +184,31 @@ def fig_1_architecture() -> None:
 
     # Loss annotations (bottom row)
     losses = [
-        (1.0, 0.6, "$\\mathcal{L}_{data}$\nBEM supervision", COLORS["blue"]),
-        (3.2, 0.6, "$\\mathcal{L}_{eik}$\n$|\\nabla s| = 1$", COLORS["green"]),
-        (5.4, 0.6, "$\\mathcal{L}_{helm}$\n$\\nabla^2 p + k^2 p = 0$", COLORS["dark"]),
-        (7.6, 0.6, "$\\mathcal{L}_{sdf}$\nSDF supervision", COLORS["yellow"]),
+        (1.0, 0.6, "$\\mathcal{L}_{data}$\nBEM supervision", COLORS["blue"], False),
+        (3.2, 0.6, "$\\mathcal{L}_{eik}$\n$|\\nabla s| = 1$", COLORS["green"], False),
+        (5.4, 0.6, "$\\mathcal{L}_{helm}$\n$\\nabla^2 p + k^2 p = 0$", "#999999", True),
+        (7.6, 0.6, "$\\mathcal{L}_{sdf}$\nSDF supervision", COLORS["yellow"], False),
     ]
 
-    for x, y, label, color in losses:
+    for x, y, label, color, disabled in losses:
         ax.text(
             x, y, label, ha="center", va="center",
             fontsize=6.5, color=color,
+            alpha=0.4 if disabled else 1.0,
             bbox=dict(boxstyle="round,pad=0.1", facecolor="white",
-                      edgecolor=color, linewidth=0.5, alpha=0.9),
+                      edgecolor=color, linewidth=0.5,
+                      alpha=0.4 if disabled else 0.9,
+                      linestyle="--" if disabled else "-"),
         )
+        if disabled:
+            ax.plot(
+                [x - 0.7, x + 0.7], [y, y],
+                color="#CC0000", linewidth=1.2, alpha=0.8,
+            )
+            ax.text(
+                x, y - 0.3, "DISABLED", ha="center", va="center",
+                fontsize=5, color="#CC0000", fontweight="bold",
+            )
 
     ax.set_title("Deep Acoustic Diffraction Tomography: Architecture", fontsize=9)
     save_fig(fig, "fig_1_architecture")
