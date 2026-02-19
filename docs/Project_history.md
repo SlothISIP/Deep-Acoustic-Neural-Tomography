@@ -1077,3 +1077,134 @@ This allows Experiment A to test different alpha values without modifying the mo
 
 *Last Updated: 2026-02-19*
 *Session 9: Additional experiments (S12 sweep, LOO, noise) + 7 publication figures complete.*
+
+---
+
+## Session 10: 2026-02-19
+
+### Paper-Readiness Review + ICASSP Manuscript
+
+**Duration**: ~3 hours
+**Phase**: 5 (Paper Writing & Submission)
+
+---
+
+### Critical Review Findings
+
+User-driven critical review identified 9 major issues with paper-readiness:
+
+1. **One-line summary was dishonest**: Claimed Helmholtz enforcement, but L_Helmholtz disabled
+2. **"Physics-Informed" label indefensible**: Only Eikonal works, Helmholtz fails (residuals ~10^5)
+3. **Phase 2 gate margin thin**: 4.47% vs 5% gate (0.53%p margin)
+4. **S12 α=100 not used**: K=2 α=100 gives IoU 0.98 but with catastrophic forgetting
+5. **Cycle-consistency ≠ geometry accuracy**: S12 has r=0.92 but IoU=0.49
+6. **No repeated experiments**: Single seed (42) for all results
+7. **v3.3 roadmap divergence**: SIREN, Burton-Miller, etc. in docs but not implemented
+8. **"최초" claim needs qualifier**: Must say "2D synthetic"
+9. **Forward model input**: Complex pressure, not "raw audio"
+
+---
+
+### Action Items Executed
+
+#### Action 1: S12 Frozen-Decoder Experiment
+- **Script**: `scripts/run_experiment_s12_frozen.py`
+- **Method**: Freeze SDFDecoder params, optimize only S12 codes via gradient hook
+- **Results**:
+
+| Config | S12 IoU | Others IoU | Drift | Overall |
+|--------|---------|------------|-------|---------|
+| baseline (v3) | 0.493 | 0.953 | -- | 0.949 |
+| α=50-frozen | **0.618** | 0.982 | 0.000 | **0.957** |
+| α=100-frozen | 0.537 | 0.982 | 0.000 | 0.952 |
+| α=200-frozen | 0.532 | 0.982 | 0.000 | 0.952 |
+
+- **Conclusion**: Frozen decoder guarantees zero drift. α=50 best (code distribution match).
+
+#### Action 2: Seed Sweep (Reproducibility)
+- **Script**: `scripts/run_seed_sweep.py`
+- **Seeds**: {42, 123, 456}, 1000 epochs each
+- **Bug found & fixed**: Checkpoint name mismatch (`best_seed42.pt` vs `best_phase3_seed42.pt`)
+- **Results**:
+
+| Seed | Mean IoU | Mean r | Training Time |
+|------|----------|--------|---------------|
+| 42 | 0.9183 | 0.9077 | 835s |
+| 123 | 0.8963 | 0.9059 | 841s |
+| 456 | 0.9206 | 0.9085 | 845s |
+| **Mean±Std** | **0.912±0.011** | **0.907±0.001** | |
+
+- **Conclusion**: All 3 seeds PASS both gates. IoU σ=0.011, r σ=0.001 — reproducible.
+
+#### Action 3: CLAUDE.md Honest Update (6 edits)
+1. One-line contribution: removed Helmholtz, added "2D", "physics-structured"
+2. Core Architecture: replaced roadmap pseudocode with actual implementation
+3. Key Technical Specifications: replaced v3.3 specs with actual (200 freq, Helmholtz DISABLED)
+4. Phase table: updated names and gate numbers
+5. Hardware Policy: PINN → Neural surrogate
+6. Implementation Status: added Known Limitations section
+
+#### Action 4: Paper Framing Document
+- **File**: `docs/paper_framing.md`
+- **Title**: "Neural Acoustic Diffraction Tomography: Cycle-Consistent Geometry Reconstruction from 2D BEM Data"
+- **3 Contributions**: Transfer function (C1), Auto-decoder SDF + Helmholtz negative result (C2), Cycle-consistency + robustness (C3)
+- **7 "DON'T Claim" items**: Physics-Informed, First-ever, Real-time, Generalizes, Audio-to-geometry, 3D, Helmholtz-consistent
+
+#### Action 5: ICASSP Manuscript
+- **File**: `paper/main.tex` + `paper/refs.bib`
+- **Format**: IEEE 2-column, 4 pages content + refs
+- **Content**: Abstract, Introduction, Method (4 subsections), Experiments (5 subsections), Conclusion
+- **Figures**: 4 (architecture, SDF gallery, ablation bars, cycle-consistency)
+- **Tables**: 3 (forward ablation, inverse ablation, noise robustness)
+- **References**: 9 papers
+- **Compiles**: 4 pages, 765KB PDF
+
+---
+
+### Files Created/Modified
+
+| File | Changes |
+|------|---------|
+| `CLAUDE.md` | 6 edits: Helmholtz removal, architecture alignment, specs update |
+| `docs/paper_framing.md` | **NEW** — Paper title, contributions, claims, anti-claims |
+| `scripts/run_experiment_s12_frozen.py` | **NEW** — S12 frozen-decoder code-only optimization |
+| `scripts/run_seed_sweep.py` | **NEW** — 3-seed reproducibility test + checkpoint bug fix |
+| `paper/main.tex` | **NEW** — ICASSP 4-page manuscript |
+| `paper/refs.bib` | **NEW** — 9 bibliography entries |
+| `paper/main.pdf` | **NEW** — Compiled PDF (765KB) |
+| `results/experiments/s12_frozen_decoder.csv` | **NEW** — 3 frozen-decoder configs |
+| `results/experiments/seed_sweep.csv` | **NEW** — 3-seed IoU/r results |
+| `.gitignore` | Added LaTeX build artifact exclusions |
+
+---
+
+### Phase Status
+
+| Phase | Status | Gate Result |
+|-------|--------|-------------|
+| **0: Foundation Validation** | **COMPLETE** | **PASS (1.77%)** |
+| **1: BEM Data Factory** | **COMPLETE** | **PASS (8853/8853 causal, 100%)** |
+| **2: Forward Model** | **COMPLETE** | **PASS (4.47%)** |
+| **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.912±0.011, 3 seeds)** |
+| **4: Validation** | **COMPLETE** | **PASS (r = 0.907±0.001, 3 seeds)** |
+| **5: Paper** | **IN PROGRESS** | ICASSP manuscript draft complete |
+
+---
+
+### Paper-Ready Deliverables (Cumulative)
+
+| Deliverable | Location |
+|-------------|----------|
+| ICASSP manuscript (4pp) | `paper/main.tex` |
+| Compiled PDF | `paper/main.pdf` |
+| Paper framing doc | `docs/paper_framing.md` |
+| S12 frozen-decoder results | `results/experiments/s12_frozen_decoder.csv` |
+| Seed sweep results | `results/experiments/seed_sweep.csv` |
+| Forward ablation LaTeX table | `results/ablations/forward_ablation.tex` |
+| Inverse ablation LaTeX table | `results/ablations/inverse_ablation.tex` |
+| 7 ICASSP figures (PDF+PNG) | `results/paper_figures/` |
+
+---
+
+*Last Updated: 2026-02-19*
+*Session 10: ICASSP manuscript complete. Seed sweep (IoU 0.912±0.011). S12 frozen-decoder (IoU 0.62). CLAUDE.md honest update.*

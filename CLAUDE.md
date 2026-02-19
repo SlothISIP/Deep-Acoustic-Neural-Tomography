@@ -403,9 +403,9 @@ Requires Python 3.9+ and OpenCL drivers.
 | **0: Foundation Validation** | **COMPLETE** | **PASS (1.77%)** |
 | **1: BEM Data Factory** | **COMPLETE** | **PASS (8853/8853 causal, 100%)** |
 | **2: Forward Model** | **COMPLETE** | **PASS (4.47%, quad ensemble + calib)** |
-| **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.957, frozen-decoder S12 fix)** |
-| **4: Validation** | **COMPLETE** | **PASS (r = 0.902 > 0.8)** |
-| **5: Paper** | **IN PROGRESS** | Experiments + figures done, manuscript pending |
+| **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.912±0.011, 3 seeds)** |
+| **4: Validation** | **COMPLETE** | **PASS (r = 0.907±0.001, 3 seeds)** |
+| **5: Paper** | **IN PROGRESS** | ICASSP manuscript draft complete |
 
 ### Known Limitations (Paper Discussion Points)
 
@@ -415,19 +415,24 @@ Requires Python 3.9+ and OpenCL drivers.
 4. **2D synthetic only**: No 3D extension or real measured data.
 5. **Cycle ≠ geometry accuracy**: S12 has IoU 0.49 but cycle r=0.92 — forward model compensates via non-SDF features, revealing ill-posedness.
 
-### Session 10: S12 Frozen-Decoder + Seed Sweep (2026-02-19)
+### Session 10: Paper-Readiness Review + ICASSP Manuscript (2026-02-19)
 
 **Changes**:
-- Exp A2 (S12 frozen-decoder): Decoder frozen, code-only optimization → S12 IoU 0.49→0.62, others unchanged (drift=0.0)
-- Seed sweep: Inverse model reproducibility (seeds 42/123/456)
-- CLAUDE.md updated to match actual implementation (Helmholtz removed, Transfer Function, 2D qualifier)
+- Critical review: 9 issues identified (Helmholtz claims, single seed, etc.)
+- S12 frozen-decoder: code-only optimization → IoU 0.49→0.62, zero drift
+- Seed sweep: 3 seeds (42/123/456) → IoU 0.912±0.011, r 0.907±0.001
+- ICASSP manuscript: 4pp, 4 figs, 3 tables, 9 refs
+- CLAUDE.md: Helmholtz removal, architecture alignment, honest claims
 
 | File | Change |
 |------|--------|
-| `scripts/run_experiment_s12_frozen.py` | **NEW** — S12 frozen-decoder code-only (3 alpha configs) |
-| `scripts/run_seed_sweep.py` | **NEW** — Inverse model seed reproducibility |
-| `results/experiments/s12_frozen_decoder.csv` | **NEW** — Frozen-decoder results |
-| `CLAUDE.md` | Updated: one-line contribution, architecture, specs, phase table |
+| `paper/main.tex` | **NEW** — ICASSP 4-page manuscript |
+| `paper/refs.bib` | **NEW** — 9 bibliography entries |
+| `docs/paper_framing.md` | **NEW** — Title, contributions, claims |
+| `scripts/run_experiment_s12_frozen.py` | **NEW** — S12 frozen-decoder |
+| `scripts/run_seed_sweep.py` | **NEW** — 3-seed reproducibility |
+| `results/experiments/seed_sweep.csv` | **NEW** — Seed sweep results |
+| `CLAUDE.md` | 6 edits: honest claims, actual architecture |
 
 ---
 
@@ -449,6 +454,10 @@ project_root/
 │   ├── dataset.py             # Phase 1 HDF5 → PyTorch dataset
 │   ├── inverse_model.py       # SDFDecoder + InverseModel (Phase 3)
 │   └── inverse_dataset.py     # Per-scene structured data loader (Phase 3)
+├── paper/                     # ICASSP manuscript
+│   ├── main.tex               # 4-page manuscript source
+│   ├── refs.bib               # Bibliography (9 entries)
+│   └── main.pdf               # Compiled PDF
 ├── scripts/                   # Execution scripts
 │   ├── run_phase0.py          # Phase 0 validation (PASSED)
 │   ├── run_phase1.py          # Phase 1 data factory
@@ -463,6 +472,8 @@ project_root/
 │   ├── run_experiment_s12.py  # Phase 5: S12 multi-body sweep
 │   ├── run_experiment_loo.py  # Phase 5: LOO generalization
 │   ├── run_experiment_noise.py # Phase 5: noise robustness
+│   ├── run_experiment_s12_frozen.py # Phase 5: S12 frozen-decoder
+│   ├── run_seed_sweep.py      # Phase 5: seed reproducibility
 │   └── generate_paper_figures.py # Phase 5: 7 ICASSP figures
 ├── tests/                     # Tests + diagnostics
 │   ├── test_inverse_model.py  # Phase 3 unit tests (37 tests)
@@ -507,4 +518,4 @@ project_root/
 - `scripts/generate_paper_figures.py`: 7 ICASSP publication figures (300 DPI PDF+PNG)
 - `docs/Project_history.md`: Full session log (append-only)
 
-**Files**: 34 Python | **Lines**: ~16,463 | **History**: See `docs/Project_history.md`
+**Files**: 36 Python + 2 LaTeX | **Lines**: ~18,000 | **History**: See `docs/Project_history.md`
