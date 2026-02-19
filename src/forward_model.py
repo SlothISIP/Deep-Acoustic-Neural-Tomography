@@ -300,6 +300,7 @@ class TransferFunctionModel(nn.Module):
         x_rcv: torch.Tensor,
         k: torch.Tensor,
         sdf_rcv: torch.Tensor,
+        scene_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Forward from raw physical coordinates (for PDE loss).
 
@@ -315,7 +316,9 @@ class TransferFunctionModel(nn.Module):
         k : torch.Tensor, shape (B, 1)
             Wavenumber [rad/m].
         sdf_rcv : torch.Tensor, shape (B, 1)
-            SDF at receiver position [m].  Detached.
+            SDF at receiver position [m].
+        scene_ids : torch.Tensor, optional, shape (B,), dtype=long
+            0-indexed scene IDs for scene embedding.
 
         Returns
         -------
@@ -329,7 +332,7 @@ class TransferFunctionModel(nn.Module):
             [x_src, x_rcv, k, sdf_rcv, dist, dx, dy], dim=-1
         )  # (B, 9)
 
-        return self.forward(inputs)
+        return self.forward(inputs, scene_ids=scene_ids)
 
     @torch.no_grad()
     def count_parameters(self) -> int:
