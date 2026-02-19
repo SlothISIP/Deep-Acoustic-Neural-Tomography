@@ -145,7 +145,8 @@ $(\nabla^2 + k^2)\ptot = -\delta(\bm{x} - \bm{x}_s)$ in the exterior
 domain, with Neumann boundary conditions on $\partial\Omega$.
 The scattered field is $\pscat = \ptot - \pinc$, where
 $\pinc = \frac{i}{4}H_0^{(1)}(k|\bm{x} - \bm{x}_s|)$ is the free-space
-Green's function in 2D.
+Green's function in 2D. The uniform theory of diffraction~\cite{kouyoumjian1974uniform}
+provides the analytical basis for edge scattering in such geometries.
 
 We seek to learn: (i)~a forward surrogate
 $f_\theta: (\bm{x}_s, \bm{x}_r, k) \mapsto \ptot$ that approximates BEM,
@@ -271,10 +272,11 @@ We generate 2D BEM data for 15 scenes spanning 5 geometry classes:
 wedges (3), cylinders (2), polygons (4), barriers (2), and multi-body
 compositions (4). For each scene, 3 source positions illuminate the
 geometry, with receivers placed at 40--200 positions per source.
-We solve the BEM at 200 frequencies uniformly spaced in 2--8\,kHz
-($k \in [36.6, 146.5]$\,rad/m), yielding 1,769,400 complex pressure
-observations in total. The BEM solver is validated against Macdonald's
-analytical solution for a 90$^\circ$ wedge (1.77\% $L_2$ error).
+We solve the BEM~\cite{ihlenburg1998finite} at 200 frequencies uniformly
+spaced in 2--8\,kHz ($k \in [36.6, 146.5]$\,rad/m), yielding 1,769,400
+complex pressure observations in total. The BEM solver is validated against
+Macdonald's analytical solution~\cite{macdonald1902electric} for a
+90$^\circ$ wedge (1.77\% $L_2$ error).
 
 Room impulse responses (RIRs) are synthesized via inverse DFT with
 phase unwrapping. All 8,853 source--receiver pairs satisfy the causality

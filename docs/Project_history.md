@@ -1355,5 +1355,84 @@ Implemented 5 experiments (P0–P3) to strengthen the ICASSP paper with quantita
 
 ---
 
+---
+
+## Session 12: 2026-02-20
+
+### Manuscript Polish and Mid-Session Review
+
+**Phase**: 5 (Paper Writing & Submission)
+
+---
+
+### 1. Manuscript Updates (`paper/main.tex`)
+
+Integrated Session 11 baseline/ablation results into the ICASSP manuscript:
+
+| Change | Details |
+|--------|---------|
+| **Abstract** | Added baseline comparison (48%→4.47%), cross-freq generalization limits |
+| **Contributions** | Strengthened with vanilla MLP comparison (48%→4.47%), comprehensive evaluation |
+| **Table I (Forward Ablation)** | Expanded from 5 to 8 rows: +no-scatterer, +vanilla MLP, +no-Fourier |
+| **Forward Results** | New narrative: T formulation as central contribution, FF accelerates but non-essential |
+| **Inverse Results** | Added Chamfer (0.063m) and Hausdorff (0.456m) metrics |
+| **Cross-frequency** | New paragraph on extrapolation (42.99%) and interpolation (39.62%) failure |
+| **Conclusion** | Rewritten around T formulation centrality, frequency limitation |
+| **Latent dim fix** | `\RR^{64}` → `\RR^{256}` (matching implementation) |
+
+### 2. Figure Update (`fig_5_ablation_bars`)
+
+Updated forward ablation bar chart to match expanded Table I:
+- **3 grey/cyan baseline bars**: No scatter (48.0%), Vanilla MLP (48.0%), No FF (2.3%)
+- **5 red/green ensemble bars**: Single → Quad+cal progression
+- Visual separator (dotted line) between baseline and ensemble groups
+- Group labels ("Baselines" / "Ensemble (T formulation)")
+
+### 3. Reference Cleanup (`paper/refs.bib`)
+
+| Action | Details |
+|--------|---------|
+| **Added citations** | `ihlenburg1998` (BEM), `macdonald1902` (analytical), `kouyoumjian1974` (UTD) |
+| **Removed dead entries** | `mildenhall2021nerf`, `steinberg2006bempp`, `sitzmann2020siren` |
+| **Fixed** | `macdonald1902electric` type: `@article` → `@book` (resolved bibtex warning) |
+| **Final count** | 12 references (was 9 cited + 6 dead = 15 entries) |
+
+### 4. Page Count Verification
+
+- Compiled PDF: **4 pages** (within ICASSP 4+1 limit)
+- All figures, tables, and references fit within 4 pages
+- No overflow issues
+
+### 5. Files Changed
+
+| File | Change |
+|------|--------|
+| `paper/main.tex` | +74/-49 lines: baseline integration, cross-freq, ref citations |
+| `paper/refs.bib` | +3 citations, -3 dead entries, 1 type fix |
+| `paper/main.pdf` | Recompiled (4 pages, 12 references) |
+| `scripts/generate_paper_figures.py` | fig_5 updated: 8-bar forward ablation |
+| `results/paper_figures/fig_5_ablation_bars.{pdf,png}` | Regenerated |
+
+### 6. Commits
+
+| Hash | Message |
+|------|---------|
+| `90fbc36` | `feat(paper): integrate baseline comparisons and cross-freq results into manuscript` |
+
+---
+
+### Phase Status
+
+| Phase | Status | Gate Result |
+|-------|--------|-------------|
+| **0: Foundation Validation** | **COMPLETE** | **PASS (1.77%)** |
+| **1: BEM Data Factory** | **COMPLETE** | **PASS (8853/8853 causal, 100%)** |
+| **2: Forward Model** | **COMPLETE** | **PASS (4.47%, quad ensemble + calib)** |
+| **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.912±0.011, 3 seeds)** |
+| **4: Validation** | **COMPLETE** | **PASS (r = 0.907±0.001, 3 seeds)** |
+| **5: Paper** | **IN PROGRESS** | Manuscript polished, figures/refs updated |
+
+---
+
 *Last Updated: 2026-02-20*
-*Session 11: Baseline comparisons complete. T formulation proven essential (48%→4.47%). Extended SDF metrics. Cross-freq generalization tested.*
+*Session 12: Manuscript polish — integrated baselines into paper, updated ablation figure, cleaned references (9→12), verified 4-page limit.*

@@ -434,40 +434,66 @@ def fig_4_sdf_gallery(checkpoint_name: str = "best_phase3_v3") -> None:
 # ===================================================================
 def fig_5_ablation_bars() -> None:
     """Side-by-side ablation bar charts for forward and inverse models."""
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(TWO_COL_WIDTH_IN, 2.5))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(TWO_COL_WIDTH_IN, 2.8))
 
-    # --- Forward ablation ---
+    # --- Forward ablation (8 configs: 3 baseline + 5 ensemble) ---
     fwd_configs = [
-        ("Single", 11.54),
-        ("Single+cal", 10.20),
-        ("Duo+cal", 9.89),
-        ("Quad", 4.57),
-        ("Quad+cal", 4.47),
+        ("No scatter", 47.95, "baseline"),
+        ("Vanilla MLP", 48.00, "baseline"),
+        ("No FF (T)", 2.27, "baseline"),
+        ("Single", 11.54, "ensemble"),
+        ("+calib", 10.20, "ensemble"),
+        ("Duo+cal", 9.89, "ensemble"),
+        ("Quad", 4.57, "ensemble"),
+        ("Quad+cal", 4.47, "ensemble"),
     ]
     x_fwd = np.arange(len(fwd_configs))
     labels_fwd = [c[0] for c in fwd_configs]
     vals_fwd = [c[1] for c in fwd_configs]
-    bar_colors_fwd = [
-        COLORS["green"] if v < 5.0 else COLORS["red"] for v in vals_fwd
-    ]
+    groups_fwd = [c[2] for c in fwd_configs]
+
+    bar_colors_fwd = []
+    for val, group in zip(vals_fwd, groups_fwd):
+        if group == "baseline":
+            bar_colors_fwd.append(COLORS["grey"] if val > 5.0 else COLORS["cyan"])
+        else:
+            bar_colors_fwd.append(COLORS["green"] if val < 5.0 else COLORS["red"])
 
     bars_fwd = ax1.bar(
         x_fwd, vals_fwd, color=bar_colors_fwd,
         edgecolor="black", linewidth=0.3, width=0.6,
     )
     ax1.axhline(y=5.0, color=COLORS["red"], linestyle="--", linewidth=0.8, label="Gate (5%)")
+    # Visual separator between baseline and ensemble groups
+    ax1.axvline(x=2.5, color="black", linestyle=":", linewidth=0.6, alpha=0.5)
     ax1.set_xticks(x_fwd)
-    ax1.set_xticklabels(labels_fwd, rotation=30, ha="right", fontsize=6)
+    ax1.set_xticklabels(labels_fwd, rotation=40, ha="right", fontsize=5.5)
     ax1.set_ylabel("Error (%)")
     ax1.set_title("(a) Forward Model Ablation")
     ax1.legend(loc="upper right", fontsize=6)
 
     # Value labels on bars
     for bar, val in zip(bars_fwd, vals_fwd):
-        ax1.text(
-            bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
-            f"{val:.1f}%", ha="center", va="bottom", fontsize=5.5,
-        )
+        y_pos = bar.get_height() + 0.5
+        label_text = f"{val:.1f}%"
+        # For tall bars (>20%), place label inside
+        if val > 20.0:
+            ax1.text(
+                bar.get_x() + bar.get_width() / 2, bar.get_height() * 0.5,
+                label_text, ha="center", va="center", fontsize=5, color="white",
+                fontweight="bold",
+            )
+        else:
+            ax1.text(
+                bar.get_x() + bar.get_width() / 2, y_pos,
+                label_text, ha="center", va="bottom", fontsize=5,
+            )
+
+    # Group labels
+    ax1.text(1.0, -0.18, "Baselines", ha="center", va="top", fontsize=5.5,
+             fontstyle="italic", transform=ax1.get_xaxis_transform())
+    ax1.text(5.5, -0.18, "Ensemble (T formulation)", ha="center", va="top",
+             fontsize=5.5, fontstyle="italic", transform=ax1.get_xaxis_transform())
 
     # --- Inverse ablation ---
     inv_configs = [
