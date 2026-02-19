@@ -515,4 +515,4 @@ project_root/
 - `tests/test_inverse_model.py`: 21 unit tests for Phase 3 (all passing)
 - `docs/Project_history.md`: Full session log (append-only)
 
-**Files**: 27 Python | **Lines**: ~13,200 | **History**: See `docs/Project_history.md`
+**Files**: 27 Python | **Lines**: ~13,490 | **History**: See `docs/Project_history.md`
