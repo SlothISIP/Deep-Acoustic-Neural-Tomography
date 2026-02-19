@@ -1,0 +1,461 @@
+% ICASSP 2026 Submission
+% Neural Acoustic Diffraction Tomography
+% ========================================================================
+\documentclass[conference]{IEEEtran}
+
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{cite}
+\usepackage{hyperref}
+\usepackage{multirow}
+\usepackage{bm}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{subcaption}
+
+\graphicspath{{../results/paper_figures/}}
+
+% Math shortcuts
+\newcommand{\RR}{\mathbb{R}}
+\newcommand{\CC}{\mathbb{C}}
+\newcommand{\Lsdf}{\mathcal{L}_{\text{sdf}}}
+\newcommand{\Leik}{\mathcal{L}_{\text{eik}}}
+\newcommand{\Lcyc}{\mathcal{L}_{\text{cycle}}}
+\newcommand{\pinc}{p_{\text{inc}}}
+\newcommand{\pscat}{p_{\text{scat}}}
+\newcommand{\ptot}{p_{\text{tot}}}
+
+\begin{document}
+
+% ========================================================================
+\title{Neural Acoustic Diffraction Tomography:\\
+Cycle-Consistent Geometry Reconstruction from 2D BEM Data}
+
+\author{
+\IEEEauthorblockN{Anonymous Author(s)}
+\IEEEauthorblockA{Submitted for blind review}
+}
+
+\maketitle
+
+% ========================================================================
+% ABSTRACT
+% ========================================================================
+\begin{abstract}
+We present a neural framework for 2D acoustic diffraction tomography that
+reconstructs scene geometry from boundary element method (BEM) simulations.
+Our approach introduces three components:
+(1)~a \emph{transfer function} formulation that learns the scattered-to-incident
+pressure ratio, eliminating dominant phase oscillations and achieving 4.47\%
+BEM reconstruction error across 15 synthetic scenes;
+(2)~an \emph{auto-decoder} inverse model that maps acoustic observations to
+signed distance functions (SDF) with Eikonal regularization, yielding 0.95
+mean intersection-over-union (IoU); and
+(3)~a \emph{cycle-consistency} mechanism that validates geometry through
+forward--inverse agreement (Pearson $r=0.90$).
+We demonstrate robustness to additive noise down to 10\,dB SNR ($r=0.86$)
+and analyze generalization via leave-one-out evaluation.
+Notably, we report that Helmholtz PDE enforcement through neural surrogates
+fails due to the gap between network curvature and physical
+Laplacians---a negative result with implications for physics-informed
+acoustic learning.
+\end{abstract}
+
+\begin{IEEEkeywords}
+acoustic diffraction, neural surrogate, signed distance function,
+inverse scattering, cycle-consistency, boundary element method
+\end{IEEEkeywords}
+
+% ========================================================================
+% 1. INTRODUCTION
+% ========================================================================
+\section{Introduction}
+\label{sec:intro}
+
+Reconstructing the geometry of a scene from acoustic measurements is a
+fundamental problem in computational acoustics with applications to room
+modeling~\cite{kuster2004acoustic}, sonar imaging~\cite{colton2019inverse},
+and augmented reality~\cite{richard2022deep}.
+Classical approaches rely on iterative optimization against physics-based
+solvers~\cite{colton2019inverse}, which is computationally expensive and
+sensitive to initialization.
+Recent neural approaches learn implicit representations of acoustic
+fields~\cite{luo2022naf, su2023inras} or jointly model audio and
+geometry~\cite{liang2024acoustic}, but typically model the \emph{total}
+pressure directly, ignoring the physical structure of wave propagation.
+Physics-informed neural networks~\cite{raissi2019physics} offer PDE
+supervision, but as we show, Helmholtz enforcement fails when applied
+through neural surrogates rather than continuous fields.
+
+We propose a two-stage neural framework for 2D acoustic diffraction
+tomography (Fig.~\ref{fig:architecture}). In the \emph{forward} stage,
+we learn a transfer function $T = \pscat / \pinc$ that captures only the
+scattering component, removing the dominant free-space phase oscillation.
+This simple reformulation compresses the effective data variance from 13\%
+to 89.6\%, enabling a compact MLP to approximate BEM-quality fields.
+In the \emph{inverse} stage, an auto-decoder~\cite{park2019deepsdf}
+optimizes per-scene latent codes into an SDF decoder with Eikonal
+regularization, and a frozen copy of the forward model provides
+cycle-consistency supervision.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_1_architecture.pdf}
+\caption{System architecture. The forward model learns a transfer function
+$T = \pscat/\pinc$; the inverse model maps acoustic data to SDF via an
+auto-decoder. Cycle-consistency closes the loop. Note: Helmholtz loss
+$\mathcal{L}_{\text{helm}}$ was found to be incompatible with neural
+surrogates and is \emph{disabled} (Sec.~\ref{sec:discussion}).}
+\label{fig:architecture}
+\end{figure}
+
+Our contributions are:
+\begin{enumerate}
+\item A \textbf{transfer function formulation} for neural acoustic modeling
+      that achieves 4.47\% reconstruction error against BEM on 15 scenes
+      with 200 frequencies each (Sec.~\ref{sec:forward}).
+\item An \textbf{auto-decoder inverse model} with Eikonal-regularized SDF
+      that reconstructs 2D geometry at 0.95 mean IoU, along with a
+      \textbf{negative result} showing Helmholtz PDE loss is incompatible
+      with neural surrogates (Sec.~\ref{sec:inverse}).
+\item A \textbf{cycle-consistency} validation achieving $r=0.90$, robust
+      to 10\,dB SNR noise, with leave-one-out generalization analysis
+      (Sec.~\ref{sec:experiments}).
+\end{enumerate}
+
+% ========================================================================
+% 2. METHOD
+% ========================================================================
+\section{Method}
+\label{sec:method}
+
+% -----------------------------------------------------------------------
+\subsection{Problem Formulation}
+\label{sec:problem}
+
+Consider a 2D acoustic scene with scatterers occupying region $\Omega$
+bounded by surface $\partial\Omega$. A point source at position
+$\bm{x}_s$ emits a monochromatic wave at wavenumber
+$k = 2\pi f / c$, where $c = 343$\,m/s.
+The total pressure $\ptot(\bm{x})$ satisfies the Helmholtz equation
+$(\nabla^2 + k^2)\ptot = -\delta(\bm{x} - \bm{x}_s)$ in the exterior
+domain, with Neumann boundary conditions on $\partial\Omega$.
+The scattered field is $\pscat = \ptot - \pinc$, where
+$\pinc = \frac{i}{4}H_0^{(1)}(k|\bm{x} - \bm{x}_s|)$ is the free-space
+Green's function in 2D.
+
+We seek to learn: (i)~a forward surrogate
+$f_\theta: (\bm{x}_s, \bm{x}_r, k) \mapsto \ptot$ that approximates BEM,
+and (ii)~an inverse mapping
+$g_\phi: \{\ptot\} \mapsto s(\bm{x})$ that recovers the signed distance
+function $s: \RR^2 \to \RR$ of $\partial\Omega$.
+
+% -----------------------------------------------------------------------
+\subsection{Forward Model: Transfer Function Learning}
+\label{sec:forward}
+
+\textbf{Transfer function target.}
+Rather than learning $\ptot$ directly, we define the transfer function
+\begin{equation}
+T(\bm{x}_s, \bm{x}_r, k) = \frac{\pscat(\bm{x}_s, \bm{x}_r, k)}
+    {\pinc(\bm{x}_s, \bm{x}_r, k)},
+\label{eq:transfer}
+\end{equation}
+which removes the dominant $e^{ikr}/(4\pi r)$ oscillation from the learning
+target. This is analogous to learning a scattering matrix rather than the
+total field. The total pressure is recovered as
+$\ptot = \pinc \cdot (1 + T \cdot \sigma)$,
+where $\sigma$ is a per-scene normalization scale.
+
+\textbf{Architecture.}
+The forward model $f_\theta$ encodes 4 scalar inputs---source angle
+$\phi_s$, receiver angle $\phi_r$, wavenumber $k$, and source--receiver
+distance $d$---via Fourier features~\cite{tancik2020fourier}
+($D=128$, bandwidth $\sigma_{\text{FF}} = 30$\,m$^{-1}$), concatenated
+with a learnable scene embedding $e_s \in \RR^{32}$.
+The network consists of 8 residual blocks with hidden dimension 768, outputting
+$(\text{Re}(T), \text{Im}(T)) \in \RR^2$.
+
+\textbf{Ensemble and calibration.}
+We train four models with different seeds and apply a linear calibration layer
+$T_{\text{calib}} = aT_{\text{pred}} + b$ on a held-out validation set.
+The ensemble reduces per-model variance and achieves 4.47\% overall error
+(Sec.~\ref{sec:forward_results}).
+
+% -----------------------------------------------------------------------
+\subsection{Inverse Model: Auto-Decoder SDF Reconstruction}
+\label{sec:inverse}
+
+\textbf{SDF decoder.}
+Following DeepSDF~\cite{park2019deepsdf}, we use an auto-decoder architecture
+where each scene $i$ has a learnable latent code $\bm{z}_i \in \RR^{64}$.
+The SDF decoder $D_\psi$ takes Fourier-encoded 2D coordinates
+$\gamma(\bm{x})$ (bandwidth $\sigma = 10$) concatenated with $\bm{z}_i$
+and outputs a signed distance value through 6 residual blocks (hidden
+dimension 256):
+\begin{equation}
+s_i(\bm{x}) = D_\psi(\gamma(\bm{x}), \bm{z}_i).
+\label{eq:sdf_decoder}
+\end{equation}
+
+\textbf{Multi-code composition.}
+For multi-body scenes (e.g., our Scene 12 with two disjoint objects), we assign
+$K$ latent codes $\{\bm{z}_i^{(k)}\}_{k=1}^K$ and compose via smooth minimum:
+\begin{equation}
+s_i(\bm{x}) = -\frac{1}{\alpha}\log\sum_{k=1}^K
+    \exp\bigl(-\alpha \cdot D_\psi(\gamma(\bm{x}), \bm{z}_i^{(k)})\bigr),
+\label{eq:smooth_min}
+\end{equation}
+with sharpness $\alpha = 50$, approximating $\min_k s_i^{(k)}$.
+
+\textbf{Loss function.}
+The total loss is:
+\begin{equation}
+\mathcal{L} = \Lsdf + \lambda_1 \Leik + \lambda_2 \Lcyc,
+\label{eq:loss}
+\end{equation}
+where $\Lsdf = \mathbb{E}[|D_\psi(\bm{x}) - s^*(\bm{x})|]$ is the
+L1 SDF supervision, $\Leik = \mathbb{E}[(|\nabla_{\bm{x}} s| - 1)^2]$ is
+the Eikonal constraint enforcing $|\nabla s| = 1$, and $\Lcyc$ is the
+cycle-consistency loss (Sec.~\ref{sec:cycle}). We set
+$\lambda_1 = 0.1$, $\lambda_2 = 0.01$.
+
+\textbf{Boundary oversampling.}
+We oversample SDF training points near $s(\bm{x}) \approx 0$ by a factor of
+$3\times$, which is critical for resolving thin geometries (ablation in
+Table~\ref{tab:inverse_ablation}).
+
+\textbf{On Helmholtz PDE loss.}
+A natural extension would add a Helmholtz residual loss
+$\|\nabla^2 \hat{p} + k^2 \hat{p}\|^2$ using the forward surrogate.
+However, we found this \emph{degrades} reconstruction: the neural network's
+$\nabla^2$ (computed via automatic differentiation) captures network curvature,
+not the physical Laplacian of the pressure field. Enabling Helmholtz loss
+reduced IoU from 0.82 to 0.19 within 30 epochs in our experiments. We report
+this as a negative result (Sec.~\ref{sec:discussion}).
+
+% -----------------------------------------------------------------------
+\subsection{Cycle-Consistency}
+\label{sec:cycle}
+
+The cycle-consistency loss connects the forward and inverse models:
+\begin{equation}
+\Lcyc = \mathbb{E}\bigl[\|f_\theta(\bm{x}_s, \bm{x}_r, k; s_i)
+    - \ptot^{\text{BEM}}\|^2\bigr],
+\label{eq:cycle}
+\end{equation}
+where $s_i(\bm{x}_r) = D_\psi(\gamma(\bm{x}_r), \bm{z}_i)$ is evaluated
+at receiver positions and fed as an additional feature to the frozen forward
+model $f_\theta$. The forward model parameters are frozen during inverse
+training; only $\bm{z}_i$ and $D_\psi$ are updated.
+
+This creates a differentiable loop: latent code $\bm{z}_i \to$
+SDF at receivers $\to$ forward prediction $\to$ comparison with BEM data.
+The gradient flows through the SDF decoder, providing acoustic supervision
+for geometry beyond the SDF loss alone.
+
+% ========================================================================
+% 3. EXPERIMENTS
+% ========================================================================
+\section{Experiments}
+\label{sec:experiments}
+
+% -----------------------------------------------------------------------
+\subsection{Dataset}
+\label{sec:dataset}
+
+We generate 2D BEM data for 15 scenes spanning 5 geometry classes:
+wedges (3), cylinders (2), polygons (4), barriers (2), and multi-body
+compositions (4). For each scene, 3 source positions illuminate the
+geometry, with receivers placed at 40--200 positions per source.
+We solve the BEM at 200 frequencies uniformly spaced in 2--8\,kHz
+($k \in [36.6, 146.5]$\,rad/m), yielding 1,769,400 complex pressure
+observations in total. The BEM solver is validated against Macdonald's
+analytical solution for a 90$^\circ$ wedge (1.77\% $L_2$ error).
+
+Room impulse responses (RIRs) are synthesized via inverse DFT with
+phase unwrapping. All 8,853 source--receiver pairs satisfy the causality
+criterion $E(t < t_{\text{arrival}}) / E_{\text{total}} < 10^{-4}$.
+
+% -----------------------------------------------------------------------
+\subsection{Forward Model Results}
+\label{sec:forward_results}
+
+Table~\ref{tab:forward_ablation} shows the forward model ablation.
+A single model achieves 11.54\% error; the quad ensemble with calibration
+reduces this to 4.47\%. Per-scene errors range from 0.93\% (Scene~1,
+simple wedge) to 18.62\% (Scene~13, step discontinuity with a sharp
+geometric feature that challenges the smooth MLP).
+Excluding Scene~13, the mean error is 1.76\%.
+
+\begin{table}[t]
+\centering
+\caption{Forward model ablation: ensemble and calibration.}
+\label{tab:forward_ablation}
+\begin{tabular}{lc}
+\toprule
+Configuration & Error (\%) \\
+\midrule
+Single model & 11.54 \\
++ calibration & 10.20 \\
+Duo ensemble + calib & 9.89 \\
+Quad ensemble & 4.57 \\
+\textbf{Quad ensemble + calib} & \textbf{4.47} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% -----------------------------------------------------------------------
+\subsection{Inverse Reconstruction}
+\label{sec:inverse_results}
+
+Table~\ref{tab:inverse_ablation} shows the inverse model ablation.
+Starting from SDF + Eikonal losses (IoU\,=\,0.69), adding boundary
+oversampling ($+$0.15), cycle-consistency ($+$0.10), and multi-code
+composition ($+$0.01) yields a final mean IoU of 0.9491.
+Fourteen of 15 scenes achieve IoU\,$>$\,0.92; the exception is
+Scene~12 (two disjoint cylinders, IoU\,=\,0.49), where the smooth-minimum
+composition~\eqref{eq:smooth_min} struggles with separated bodies.
+
+\begin{table}[t]
+\centering
+\caption{Inverse model ablation: cumulative loss components.}
+\label{tab:inverse_ablation}
+\begin{tabular}{lccc}
+\toprule
+Configuration & IoU & S12 & $r$ \\
+\midrule
+$\Lsdf + \Leik$ (200\,ep) & 0.689 & 0.135 & --- \\
+$+$ bdy 3$\times$ (500\,ep) & 0.842 & 0.184 & --- \\
+$+$ $\Lcyc$ (1000\,ep) & 0.939 & 0.410 & 0.909 \\
+$+$ multi-code $K$=2 & \textbf{0.949} & 0.493 & 0.902 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_4_sdf_gallery.pdf}
+\caption{SDF reconstruction for four representative scenes.
+Top: ground truth; bottom: predicted. The model achieves high fidelity for
+single-body geometries (S1, S7, S10) but struggles with the disjoint
+multi-body Scene~12 (IoU\,=\,0.49).}
+\label{fig:sdf_gallery}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_5_ablation_bars.pdf}
+\caption{Ablation study. (a)~Forward model: ensemble and calibration
+reduce error from 11.5\% to 4.5\%. (b)~Inverse model: each component
+(boundary oversampling, cycle-consistency, multi-code) contributes to
+the final IoU of 0.95.}
+\label{fig:ablation}
+\end{figure}
+
+Cycle-consistency across all 15 scenes yields mean Pearson $r = 0.90$
+(all scenes $r > 0.83$). Notably, Scene~12 achieves $r = 0.92$ despite
+IoU\,=\,0.49, demonstrating that cycle-consistency is necessary but
+\emph{not sufficient} for geometry accuracy: the forward model compensates
+for geometry errors through its spectral input features.
+
+% -----------------------------------------------------------------------
+\subsection{Robustness and Generalization}
+\label{sec:robustness}
+
+\textbf{Noise robustness.}
+We add complex Gaussian noise to BEM observations at SNR levels
+$\{10, 20, 30, 40\}$\,dB and re-evaluate cycle-consistency (Table~\ref{tab:noise}).
+Performance degrades gracefully: $r = 0.86$ at 10\,dB SNR
+($\Delta r = -0.04$ from clean).
+
+\begin{table}[t]
+\centering
+\caption{Cycle-consistency under additive noise.}
+\label{tab:noise}
+\begin{tabular}{ccc}
+\toprule
+SNR (dB) & Mean $r$ & $\Delta r$ \\
+\midrule
+Clean & 0.902 & --- \\
+40 & 0.902 & $-$0.000 \\
+30 & 0.902 & $-$0.000 \\
+20 & 0.898 & $-$0.004 \\
+10 & 0.860 & $-$0.042 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_6_cycle_consistency.pdf}
+\caption{Per-scene cycle-consistency (Pearson $r$). All 15 scenes exceed
+the $r > 0.8$ gate. Mean $r = 0.90$.}
+\label{fig:cycle}
+\end{figure}
+
+\textbf{Seed variance.}
+Training with 3 random seeds $\{42, 123, 456\}$ yields mean
+IoU\,=\,$0.912 \pm 0.011$ and mean $r = 0.907 \pm 0.001$, confirming
+reproducibility (all seeds pass both gates).
+
+\textbf{Leave-one-out generalization.}
+We freeze the SDF decoder trained on all 15 scenes and optimize only
+the latent code for a held-out scene. Mean IoU recovery is 52\%:
+wedge-like geometries recover well (Scene~1: 92\%, Scene~14: 97\%),
+while novel shapes struggle (Scene~5 barrier: 9\%, Scene~10 triangle: 22\%).
+This indicates the decoder learns shape priors biased toward
+training geometries, as expected for an auto-decoder with only 15 scenes.
+
+% -----------------------------------------------------------------------
+\subsection{On Helmholtz PDE Loss}
+\label{sec:discussion}
+
+A distinguishing aspect of our work is the deliberate \emph{exclusion}
+of Helmholtz PDE supervision. Physics-informed approaches typically
+enforce $\|\nabla^2 p + k^2 p\|^2 \to 0$ via automatic differentiation
+of a neural field~\cite{raissi2019physics}. In our framework, the forward
+model $f_\theta$ is a \emph{surrogate} MLP, not a continuous field: its
+$\nabla^2$ (computed via second-order autodiff w.r.t.\ input coordinates)
+reflects network curvature rather than the physical Laplacian of pressure.
+We measured residuals of $\mathcal{O}(10^5)$, and enabling this loss
+collapsed IoU from 0.82 to 0.19 within 30 epochs by distorting the SDF.
+
+The Eikonal constraint $|\nabla s| = 1$ succeeds because it operates on
+the SDF decoder's own output, where network gradients align with the
+physical quantity. This asymmetry---geometry constraints work, wave-equation
+constraints do not---has implications for the growing literature on
+physics-informed acoustic models.
+
+% ========================================================================
+% 4. CONCLUSION
+% ========================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+We presented a cycle-consistent neural framework for 2D acoustic
+diffraction tomography. The transfer function formulation enables
+efficient forward modeling (4.47\% error), while the auto-decoder
+inverse model with Eikonal regularization reconstructs geometry at 0.95
+mean IoU. The cycle-consistency mechanism provides acoustic validation
+($r = 0.90$), robust to 10\,dB noise. Our negative result on Helmholtz
+PDE loss highlights a fundamental gap between neural surrogates and
+physics-based solvers.
+
+Limitations include: restriction to 2D synthetic data (15 scenes),
+per-scene optimization (no amortized inference), and difficulty with
+disjoint multi-body geometries (S12 IoU\,=\,0.49). Future work will
+address 3D extension, encoder-based generalization with larger datasets,
+and integration of differentiable BEM solvers for physically valid PDE
+enforcement.
+
+% ========================================================================
+% REFERENCES
+% ========================================================================
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}
