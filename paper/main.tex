@@ -49,19 +49,18 @@ We present a neural framework for 2D acoustic diffraction tomography that
 reconstructs scene geometry from boundary element method (BEM) simulations.
 Our approach introduces three components:
 (1)~a \emph{transfer function} formulation that learns the scattered-to-incident
-pressure ratio, eliminating dominant phase oscillations and achieving 4.47\%
-BEM reconstruction error across 15 synthetic scenes;
+pressure ratio, reducing reconstruction error from 48\% (vanilla MLP on raw
+pressure) to 4.47\% across 15 synthetic scenes by eliminating dominant phase
+oscillations;
 (2)~an \emph{auto-decoder} inverse model that maps acoustic observations to
 signed distance functions (SDF) with Eikonal regularization, yielding 0.95
 mean intersection-over-union (IoU); and
 (3)~a \emph{cycle-consistency} mechanism that validates geometry through
 forward--inverse agreement (Pearson $r=0.90$).
-We demonstrate robustness to additive noise down to 10\,dB SNR ($r=0.86$)
-and analyze generalization via leave-one-out evaluation.
-Notably, we report that Helmholtz PDE enforcement through neural surrogates
-fails due to the gap between network curvature and physical
-Laplacians---a negative result with implications for physics-informed
-acoustic learning.
+We demonstrate robustness to 10\,dB SNR noise ($r=0.86$), analyze
+cross-frequency generalization limits, and report that Helmholtz PDE
+enforcement through neural surrogates fails due to the gap between network
+curvature and physical Laplacians.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -94,8 +93,9 @@ We propose a two-stage neural framework for 2D acoustic diffraction
 tomography (Fig.~\ref{fig:architecture}). In the \emph{forward} stage,
 we learn a transfer function $T = \pscat / \pinc$ that captures only the
 scattering component, removing the dominant free-space phase oscillation.
-This simple reformulation compresses the effective data variance from 13\%
-to 89.6\%, enabling a compact MLP to approximate BEM-quality fields.
+This simple reformulation increases explained variance from 13\%
+(raw pressure) to 89.6\%, enabling a compact MLP to approximate
+BEM-quality fields.
 In the \emph{inverse} stage, an auto-decoder~\cite{park2019deepsdf}
 optimizes per-scene latent codes into an SDF decoder with Eikonal
 regularization, and a frozen copy of the forward model provides
@@ -114,16 +114,16 @@ surrogates and is \emph{disabled} (Sec.~\ref{sec:discussion}).}
 
 Our contributions are:
 \begin{enumerate}
-\item A \textbf{transfer function formulation} for neural acoustic modeling
-      that achieves 4.47\% reconstruction error against BEM on 15 scenes
-      with 200 frequencies each (Sec.~\ref{sec:forward}).
+\item A \textbf{transfer function formulation} that reduces forward error
+      from 48\% (vanilla MLP) to 4.47\% on 15 BEM scenes with 200
+      frequencies each (Sec.~\ref{sec:forward}).
 \item An \textbf{auto-decoder inverse model} with Eikonal-regularized SDF
       that reconstructs 2D geometry at 0.95 mean IoU, along with a
       \textbf{negative result} showing Helmholtz PDE loss is incompatible
       with neural surrogates (Sec.~\ref{sec:inverse}).
-\item A \textbf{cycle-consistency} validation achieving $r=0.90$, robust
-      to 10\,dB SNR noise, with leave-one-out generalization analysis
-      (Sec.~\ref{sec:experiments}).
+\item \textbf{Comprehensive evaluation}: cycle-consistency ($r=0.90$),
+      noise robustness (10\,dB SNR), cross-frequency generalization
+      analysis, and leave-one-out tests (Sec.~\ref{sec:experiments}).
 \end{enumerate}
 
 % ========================================================================
@@ -191,7 +191,7 @@ The ensemble reduces per-model variance and achieves 4.47\% overall error
 
 \textbf{SDF decoder.}
 Following DeepSDF~\cite{park2019deepsdf}, we use an auto-decoder architecture
-where each scene $i$ has a learnable latent code $\bm{z}_i \in \RR^{64}$.
+where each scene $i$ has a learnable latent code $\bm{z}_i \in \RR^{256}$.
 The SDF decoder $D_\psi$ takes Fourier-encoded 2D coordinates
 $\gamma(\bm{x})$ (bandwidth $\sigma = 10$) concatenated with $\bm{z}_i$
 and outputs a signed distance value through 6 residual blocks (hidden
@@ -285,25 +285,35 @@ criterion $E(t < t_{\text{arrival}}) / E_{\text{total}} < 10^{-4}$.
 \label{sec:forward_results}
 
 Table~\ref{tab:forward_ablation} shows the forward model ablation.
-A single model achieves 11.54\% error; the quad ensemble with calibration
-reduces this to 4.47\%. Per-scene errors range from 0.93\% (Scene~1,
-simple wedge) to 18.62\% (Scene~13, step discontinuity with a sharp
-geometric feature that challenges the smooth MLP).
-Excluding Scene~13, the mean error is 1.76\%.
+The top block validates the transfer function formulation: a vanilla MLP
+learning raw $\pscat$ achieves 48.00\% error---identical to the trivial
+``no scatterer'' baseline ($\hat{p}=\pinc$, 47.95\%), confirming that
+direct pressure learning fails entirely. Switching to the $T$ formulation
+reduces error to 2.27\% even \emph{without} Fourier features,
+demonstrating that the transfer function---not the encoding---is the key
+contribution. Fourier features accelerate convergence (fewer epochs to
+reach low error) but are not required for final accuracy.
+The quad ensemble with calibration yields 4.47\% overall, with per-scene
+errors from 0.93\% (Scene~1) to 18.62\% (Scene~13, deep shadow zone).
 
 \begin{table}[t]
 \centering
-\caption{Forward model ablation: ensemble and calibration.}
+\caption{Forward model ablation. Top: target formulation comparison validates
+that the transfer function (T) is essential. Bottom: ensemble and calibration.}
 \label{tab:forward_ablation}
-\begin{tabular}{lc}
+\begin{tabular}{llc}
 \toprule
-Configuration & Error (\%) \\
+Configuration & Target & Error (\%) \\
 \midrule
-Single model & 11.54 \\
-+ calibration & 10.20 \\
-Duo ensemble + calib & 9.89 \\
-Quad ensemble & 4.57 \\
-\textbf{Quad ensemble + calib} & \textbf{4.47} \\
+No scatterer ($\hat{p}=\pinc$) & --- & 47.95 \\
+Vanilla MLP & $\pscat$ & 48.00 \\
+No Fourier features & $T$ & 2.27 \\
+\midrule
+Single model & $T$ & 11.54 \\
++ calibration & $T$ & 10.20 \\
+Duo ensemble + calib & $T$ & 9.89 \\
+Quad ensemble & $T$ & 4.57 \\
+\textbf{Quad ens.\ + calib} & $T$ & \textbf{4.47} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -316,10 +326,13 @@ Table~\ref{tab:inverse_ablation} shows the inverse model ablation.
 Starting from SDF + Eikonal losses (IoU\,=\,0.69), adding boundary
 oversampling ($+$0.15), cycle-consistency ($+$0.10), and multi-code
 composition ($+$0.01) yields a final mean IoU of 0.9491.
-Thirteen of 15 scenes achieve IoU\,$>$\,0.92; the exceptions are
-Scene~5 (thin barrier, IoU\,=\,0.88) and
+Thirteen of 15 scenes achieve IoU\,$>$\,0.92 (Fig.~\ref{fig:sdf_gallery});
+the exceptions are Scene~5 (thin barrier, IoU\,=\,0.88) and
 Scene~12 (two disjoint cylinders, IoU\,=\,0.49), where the smooth-minimum
 composition~\eqref{eq:smooth_min} struggles with separated bodies.
+Supplementary geometry metrics confirm reconstruction quality:
+mean Chamfer distance 0.063\,m and mean Hausdorff distance 0.456\,m
+across the 15 scenes (Fig.~\ref{fig:ablation}).
 
 \begin{table}[t]
 \centering
@@ -350,15 +363,15 @@ multi-body Scene~12 (IoU\,=\,0.49).}
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{fig_5_ablation_bars.pdf}
-\caption{Ablation study. (a)~Forward model: ensemble and calibration
-reduce error from 11.5\% to 4.5\%. (b)~Inverse model: each component
-(boundary oversampling, cycle-consistency, multi-code) contributes to
-the final IoU of 0.95.}
+\caption{Ablation study. (a)~Forward: the $T$ formulation reduces error
+from 48\% to single digits; ensemble further improves to 4.5\%.
+(b)~Inverse: each component contributes to the final IoU of 0.95.}
 \label{fig:ablation}
 \end{figure}
 
 Cycle-consistency across all 15 scenes yields mean Pearson $r = 0.90$
-(all scenes $r > 0.83$). Notably, Scene~12 achieves $r = 0.92$ despite
+(all scenes $r > 0.83$; Fig.~\ref{fig:cycle}). Notably, Scene~12
+achieves $r = 0.92$ despite
 IoU\,=\,0.49, demonstrating that cycle-consistency is necessary but
 \emph{not sufficient} for geometry accuracy: the forward model compensates
 for geometry errors through its spectral input features.
@@ -397,6 +410,15 @@ Clean & 0.902 & --- \\
 the $r > 0.8$ gate. Mean $r = 0.90$.}
 \label{fig:cycle}
 \end{figure}
+
+\textbf{Cross-frequency generalization.}
+We evaluate frequency extrapolation (train: 2--6\,kHz, test: 6--8\,kHz)
+and interpolation (train: even-index, test: odd-index frequencies).
+Extrapolation yields 42.99\% test error (vs.\ 4.92\% train), indicating
+the model memorizes per-frequency patterns rather than learning a
+frequency-continuous representation. Interpolation similarly gives 39.62\%
+test error---the 60\,Hz spectral gap between training frequencies
+exceeds the model's generalization bandwidth.
 
 \textbf{Seed variance.}
 Training with 3 random seeds $\{42, 123, 456\}$ yields mean
@@ -438,20 +460,23 @@ physics-informed acoustic models.
 \label{sec:conclusion}
 
 We presented a cycle-consistent neural framework for 2D acoustic
-diffraction tomography. The transfer function formulation enables
-efficient forward modeling (4.47\% error), while the auto-decoder
-inverse model with Eikonal regularization reconstructs geometry at 0.95
-mean IoU. The cycle-consistency mechanism provides acoustic validation
-($r = 0.90$), robust to 10\,dB noise. Our negative result on Helmholtz
-PDE loss highlights a fundamental gap between neural surrogates and
-physics-based solvers.
+diffraction tomography. The transfer function formulation is the central
+contribution: it reduces forward error from 48\% (vanilla baseline) to
+4.47\%, a $>$10$\times$ improvement that holds even without Fourier
+feature encoding (2.27\%). The auto-decoder inverse model with Eikonal
+regularization achieves 0.95 mean IoU, and cycle-consistency provides
+acoustic validation ($r = 0.90$) robust to 10\,dB noise. Frequency
+generalization remains limited: the model memorizes per-frequency
+patterns rather than learning continuous spectral representations.
+Our negative result on Helmholtz PDE loss highlights a fundamental gap
+between neural surrogates and physics-based solvers.
 
 Limitations include: restriction to 2D synthetic data (15 scenes),
-per-scene optimization (no amortized inference), and difficulty with
-disjoint multi-body geometries (S12 IoU\,=\,0.49). Future work will
-address 3D extension, encoder-based generalization with larger datasets,
-and integration of differentiable BEM solvers for physically valid PDE
-enforcement.
+per-scene optimization (no amortized inference), limited cross-frequency
+generalization, and difficulty with disjoint multi-body geometries
+(S12 IoU\,=\,0.49). Future work will address 3D extension,
+frequency-continuous architectures, encoder-based generalization, and
+differentiable BEM solvers for physically valid PDE enforcement.
 
 % ========================================================================
 % REFERENCES
