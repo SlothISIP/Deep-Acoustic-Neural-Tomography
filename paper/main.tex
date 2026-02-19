@@ -93,9 +93,11 @@ We propose a two-stage neural framework for 2D acoustic diffraction
 tomography (Fig.~\ref{fig:architecture}). In the \emph{forward} stage,
 we learn a transfer function $T = \pscat / \pinc$ that captures only the
 scattering component, removing the dominant free-space phase oscillation.
-This simple reformulation increases explained variance from 13\%
-(raw pressure) to 89.6\%, enabling a compact MLP to approximate
-BEM-quality fields.
+This reformulation substantially reduces target complexity: across our
+dataset, a per-scene constant prediction of $T$ explains 89.6\% of
+variance (vs.\ 13\% for raw $\pscat$), as the transfer function removes
+the dominant phase oscillation spanning 12 cycles over 2--8\,kHz.
+This enables a compact MLP to approximate BEM-quality fields.
 In the \emph{inverse} stage, an auto-decoder~\cite{park2019deepsdf}
 optimizes per-scene latent codes into an SDF decoder with Eikonal
 regularization, and a frozen copy of the forward model provides
@@ -145,8 +147,8 @@ $(\nabla^2 + k^2)\ptot = -\delta(\bm{x} - \bm{x}_s)$ in the exterior
 domain, with Neumann boundary conditions on $\partial\Omega$.
 The scattered field is $\pscat = \ptot - \pinc$, where
 $\pinc = \frac{i}{4}H_0^{(1)}(k|\bm{x} - \bm{x}_s|)$ is the free-space
-Green's function in 2D. The uniform theory of diffraction~\cite{kouyoumjian1974uniform}
-provides the analytical basis for edge scattering in such geometries.
+Green's function in 2D. Edge diffraction~\cite{kouyoumjian1974uniform}
+produces the dominant contribution to $\pscat$ in our scenes.
 
 We seek to learn: (i)~a forward surrogate
 $f_\theta: (\bm{x}_s, \bm{x}_r, k) \mapsto \ptot$ that approximates BEM,
@@ -165,20 +167,26 @@ T(\bm{x}_s, \bm{x}_r, k) = \frac{\pscat(\bm{x}_s, \bm{x}_r, k)}
     {\pinc(\bm{x}_s, \bm{x}_r, k)},
 \label{eq:transfer}
 \end{equation}
-which removes the dominant $e^{ikr}/(4\pi r)$ oscillation from the learning
-target. This is analogous to learning a scattering matrix rather than the
+which removes the dominant $H_0^{(1)}(kr) \sim e^{ikr}/\sqrt{r}$ oscillation
+from the learning target. This is analogous to learning a scattering matrix rather than the
 total field. The total pressure is recovered as
 $\ptot = \pinc \cdot (1 + T \cdot \sigma)$,
 where $\sigma$ is a per-scene normalization scale.
 
 \textbf{Architecture.}
-The forward model $f_\theta$ encodes 4 scalar inputs---source angle
-$\phi_s$, receiver angle $\phi_r$, wavenumber $k$, and source--receiver
-distance $d$---via Fourier features~\cite{tancik2020fourier}
+The forward model $f_\theta$ takes 9 scalar inputs: source and receiver
+coordinates $(\bm{x}_s, \bm{x}_r) \in \RR^4$, wavenumber $k$,
+source--receiver distance $d$, signed distance at the receiver
+$s(\bm{x}_r)$, and spatial derivatives $({\partial s}/{\partial x},
+{\partial s}/{\partial y})$. These are encoded via random Fourier
+features~\cite{tancik2020fourier}
 ($D=128$, bandwidth $\sigma_{\text{FF}} = 30$\,m$^{-1}$), concatenated
 with a learnable scene embedding $e_s \in \RR^{32}$.
 The network consists of 8 residual blocks with hidden dimension 768, outputting
 $(\text{Re}(T), \text{Im}(T)) \in \RR^2$.
+The SDF features $(s, \partial s/\partial x, \partial s/\partial y)$ condition
+the forward model on geometry; during inverse training
+(Sec.~\ref{sec:cycle}), these carry gradients from the SDF decoder.
 
 \textbf{Ensemble and calibration.}
 We train four models with different seeds and apply a linear calibration layer
@@ -268,9 +276,9 @@ for geometry beyond the SDF loss alone.
 \subsection{Dataset}
 \label{sec:dataset}
 
-We generate 2D BEM data for 15 scenes spanning 5 geometry classes:
-wedges (3), cylinders (2), polygons (4), barriers (2), and multi-body
-compositions (4). For each scene, 3 source positions illuminate the
+We generate 2D BEM data for 15 scenes spanning 4 geometry classes:
+wedges (4), cylinders (2), polygons and barriers (6), and multi-body
+compositions (3). For each scene, 3 source positions illuminate the
 geometry, with receivers placed at 40--200 positions per source.
 We solve the BEM~\cite{ihlenburg1998finite} at 200 frequencies uniformly
 spaced in 2--8\,kHz ($k \in [36.6, 146.5]$\,rad/m), yielding 1,769,400
@@ -291,10 +299,10 @@ The top block validates the transfer function formulation: a vanilla MLP
 learning raw $\pscat$ achieves 48.00\% error---identical to the trivial
 ``no scatterer'' baseline ($\hat{p}=\pinc$, 47.95\%), confirming that
 direct pressure learning fails entirely. Switching to the $T$ formulation
-reduces error to 2.27\% even \emph{without} Fourier features,
-demonstrating that the transfer function---not the encoding---is the key
-contribution. Fourier features accelerate convergence (fewer epochs to
-reach low error) but are not required for final accuracy.
+reduces error to 2.27\% (single model, 882 epochs) even \emph{without}
+Fourier features, demonstrating that the transfer function---not the
+encoding---is the key contribution. Fourier features accelerate
+convergence but do not improve final accuracy given sufficient training.
 The quad ensemble with calibration yields 4.47\% overall, with per-scene
 errors from 0.93\% (Scene~1) to 18.62\% (Scene~13, deep shadow zone).
 
@@ -330,7 +338,7 @@ oversampling ($+$0.15), cycle-consistency ($+$0.10), and multi-code
 composition ($+$0.01) yields a final mean IoU of 0.9491.
 Thirteen of 15 scenes achieve IoU\,$>$\,0.92 (Fig.~\ref{fig:sdf_gallery});
 the exceptions are Scene~5 (thin barrier, IoU\,=\,0.88) and
-Scene~12 (two disjoint cylinders, IoU\,=\,0.49), where the smooth-minimum
+Scene~12 (two parallel plates, IoU\,=\,0.49), where the smooth-minimum
 composition~\eqref{eq:smooth_min} struggles with separated bodies.
 Supplementary geometry metrics confirm reconstruction quality:
 mean Chamfer distance 0.063\,m and mean Hausdorff distance 0.456\,m
@@ -464,9 +472,10 @@ physics-informed acoustic models.
 We presented a cycle-consistent neural framework for 2D acoustic
 diffraction tomography. The transfer function formulation is the central
 contribution: it reduces forward error from 48\% (vanilla baseline) to
-4.47\%, a $>$10$\times$ improvement that holds even without Fourier
-feature encoding (2.27\%). The auto-decoder inverse model with Eikonal
-regularization achieves 0.95 mean IoU, and cycle-consistency provides
+4.47\% (quad ensemble), a $>$10$\times$ improvement. A single model
+without Fourier features reaches 2.27\% given sufficient training,
+confirming the transfer function as the primary factor.
+The auto-decoder inverse model with Eikonal regularization achieves 0.95 mean IoU, and cycle-consistency provides
 acoustic validation ($r = 0.90$) robust to 10\,dB noise. Frequency
 generalization remains limited: the model memorizes per-frequency
 patterns rather than learning continuous spectral representations.
