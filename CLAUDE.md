@@ -405,38 +405,38 @@ Requires Python 3.9+ and OpenCL drivers.
 | **2: Forward Model** | **COMPLETE** | **PASS (4.47%, quad ensemble + calib)** |
 | **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.912±0.011, 3 seeds)** |
 | **4: Validation** | **COMPLETE** | **PASS (r = 0.907±0.001, 3 seeds)** |
-| **5: Paper** | **IN PROGRESS** | Novelty strengthened, PDF submission-ready |
+| **5: Paper** | **IN PROGRESS** | Dual-cause Helmholtz fix applied, PDF submission-ready |
 
 ### Known Limitations (Paper Discussion Points)
 
-1. **Helmholtz PDE loss incompatible**: Neural ∇²p correlates at r=0.19 with physical ∇²p (3.5% variance). Fourier feature σ=30 amplifies 2nd derivatives 35,000×. Enabling loss collapsed IoU 0.82→0.19 in 30 epochs.
+1. **Helmholtz PDE loss incompatible**: Dual-cause — (a) surrogate MLP has no incentive to match 2nd derivatives (residual O(10¹) even at σ=1), (b) Fourier σ=30 amplifies by 35,000× (aggravating factor). Enabling loss collapsed IoU 0.82→0.19 in 30 epochs.
 2. **S12 multi-body**: IoU 0.49 (v3) — smooth-min composition struggles with disjoint geometry.
 3. **S13 shadow zone**: 18.62% forward error — deep shadow behind step geometry.
 4. **2D synthetic only**: No 3D extension or real measured data.
 5. **Cycle ≠ geometry accuracy**: S12 has IoU 0.49 but cycle r=0.92 — forward model compensates via non-SDF features.
-6. **Cross-frequency**: Extrapolation fails (42.99%).
+6. **Cross-frequency**: Extrapolation fails (42.99%). Fourier encoding treats k as positional input.
 
-### Session 16: Novelty Strengthening — Helmholtz Analysis, Inference Speed, Prior Work (2026-02-20)
+### Session 16: Novelty Strengthening + σ Sweep Dual-Cause Fix (2026-02-20)
 
 **Changes**:
 - **Exp A**: Neural vs Physical Laplacian → r=0.19 (3.5% variance explained)
 - **Exp B**: Fourier feature σ² amplification → 35,000× theoretical, 55,000× empirical
+- **Exp C (σ sweep)**: σ∈{1,5,10,30} — NO tradeoff! σ=1: 2.46% err, O(10¹) residual; σ=30: 10.57% err, O(10³) residual
+- **CRITICAL FIX**: Removed false claim "High σ needed for forward accuracy" → dual-cause attribution (aggravating factor, not sole cause)
+- **3 surgical edits**: Abstract ("because"→"exacerbated by"), Sec III-E (σ sweep + dual-cause), Conclusion (σ=1 caveat)
 - **Inference speed**: 2,000× speedup (130ms vs 260s per scene)
-- **Prior work**: Added Vlašić et al. (2022) SDF inverse scattering, Wang et al. (2021) Fourier NTK
-- **Paper restructured**: Helmholtz analysis → independent Contribution #3
-- **Space optimization**: Removed Table III (noise) + Fig.6 (cycle), compressed Robustness 50→10 lines
-- **Post-review fixes**: cross-freq root cause restored, evaluation mention in contributions, Fig.5 annotation fix, Vlašić pages 947-952 corrected
-- PDF verified: 4 pages, 826KB, 0 errors, 0 overfull, 16 references
+- **Prior work**: Added Vlašić et al. (2022), Wang et al. (2021)
+- **Post-review fixes**: cross-freq root cause, Fig.5 annotation, Vlašić pages 947-952
+- PDF verified: 4 pages, 824KB, 0 errors, 0 overfull, 16 references
 
 | File | Change |
 |------|--------|
-| `scripts/run_helmholtz_analysis.py` | NEW: neural Laplacian + σ amplification analysis |
-| `scripts/measure_inference_speed.py` | NEW: BEM vs neural speed + T dynamic range |
-| `scripts/generate_helmholtz_figure.py` | NEW: Fig.5 Helmholtz 2-panel figure |
-| `scripts/run_sigma_sweep.py` | NEW: σ sweep training (optional, not in paper) |
-| `paper/main.tex` | Major revision: abstract, contributions, Sec III-E expanded |
-| `paper/refs.bib` | +2 refs (Vlašić 2022, Wang 2021), total 16 |
-| `paper/main.pdf` | Recompiled: 4 pages, 826KB |
+| `paper/main.tex` | σ sweep dual-cause fix (Abstract, Sec III-E, Conclusion) |
+| `paper/refs.bib` | +2 refs (Vlašić 2022, Wang 2021), Vlašić pages corrected |
+| `paper/main.pdf` | Recompiled: 4 pages, 824KB |
+| `scripts/generate_helmholtz_figure.py` | Fig.5 xlim 35→40, σ=30 annotation moved left |
+| `scripts/run_sigma_sweep.py` | NEW: σ sweep training (results contradict original claim) |
+| `results/experiments/sigma_sweep.csv` | σ=1: 2.46%, σ=5: 2.74%, σ=10: 2.96%, σ=30: 10.57% |
 
 ---
 
@@ -538,4 +538,4 @@ project_root/
 - `scripts/run_sigma_sweep.py`: Phase 5 σ sweep accuracy-physics tradeoff
 - `docs/Project_history.md`: Full session log (append-only)
 
-**Files**: 44 Python + 3 LaTeX | **Lines**: ~21,800 | **History**: See `docs/Project_history.md` (16 sessions)
+**Files**: 44 Python + 3 LaTeX | **Lines**: ~21,900 | **History**: See `docs/Project_history.md` (16 sessions)

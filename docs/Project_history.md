@@ -2029,5 +2029,88 @@ Three concerns raised during PDF review, plus one citation verification issue:
 
 ---
 
+### 14. σ Sweep Completion + Dual-Cause Fix (session continuation)
+
+**Experiment C completed** (background task, `scripts/run_sigma_sweep.py`):
+
+Trained 3 new models (σ=1, 5, 10) and evaluated existing σ=30 (best_v7):
+
+| σ | Forward Error | Median Residual | log₁₀(res) | Epochs |
+|---|---------------|-----------------|------------|--------|
+| 1 | **2.46%** | 2.99×10¹ | 1.48 | 189 |
+| 5 | 2.74% | 2.69×10² | 2.43 | 176 |
+| 10 | 2.96% | 9.27×10² | 2.97 | 175 |
+| 30 | 10.57% | 7.15×10³ | 3.85 | 1000 |
+
+**CRITICAL FINDING**: NO accuracy-physics tradeoff. Lower σ wins on BOTH axes:
+- σ=1 has LOWER forward error (2.46% vs 10.57%) AND LOWER Helmholtz residual (O(10¹) vs O(10³))
+- Paper's claim "High σ is needed for forward accuracy" directly contradicted by data
+- Even at σ=1, residual is O(10¹) — NOT zero. Surrogate curvature ≠ physical Laplacian regardless of σ
+
+**Factual error correction — 3 surgical edits to main.tex**:
+
+**Edit 1/3: Abstract** (`paper/main.tex:60-62`)
+- Before: "because random Fourier features with bandwidth σ=30 amplify second derivatives by 4π²σ²≈35,000×"
+- After: "exacerbated by random Fourier features that amplify second derivatives by 4π²σ²≈35,000× at σ=30"
+- Change: "because" → "exacerbated by" (FF is aggravating, not sole cause)
+
+**Edit 2/3: Sec III-E** (`paper/main.tex:461-466`)
+- Before: "At σ=30 m⁻¹ (required for resolving k_max=146 rad/m), this gives ≈35,000× amplification, compounded to ~55,000× by the 8-layer ResNet. High σ is needed for forward accuracy, but it makes ∇²f_θ physically meaningless."
+- After: "At σ=30 m⁻¹, this gives ≈35,000× amplification. However, reducing σ to 1 lowers the residual to O(10¹) without eliminating it—a surrogate trained on pressure values has no incentive to match second derivatives. Fourier amplification is an aggravating factor, not the sole cause."
+- Change: Removed false claim about σ being "required" and "needed for forward accuracy"; replaced with σ sweep evidence + dual-cause attribution
+
+**Edit 3/3: Conclusion** (`paper/main.tex:495-499`)
+- Before: "reducing the neural-physical Laplacian correlation to r=0.19. This quantifies the gap between network curvature and physical Laplacians, with implications for the PINN literature on acoustic surrogate models."
+- After: "reducing the neural-physical Laplacian correlation to r=0.19; even at σ=1, the residual remains O(10¹), confirming that surrogate-learned curvature fundamentally diverges from the physical Laplacian. This has implications for the PINN literature on acoustic surrogate models."
+- Change: Added σ=1 caveat proving fundamental (not just σ-dependent) divergence
+
+**Rebuild**: 4 pages, 824KB, 0 errors, 0 overfull, 16 refs.
+
+**Commit**: `694814f fix(paper): correct Helmholtz failure attribution with sigma sweep evidence`
+
+---
+
+### 15. Files Created/Modified (Full Session 16)
+
+| File | Changes |
+|------|---------|
+| `scripts/run_helmholtz_analysis.py` | NEW (686 lines): Exp A+B — neural Laplacian + σ amplification |
+| `scripts/measure_inference_speed.py` | NEW (329 lines): Inference speed + T dynamic range |
+| `scripts/generate_helmholtz_figure.py` | NEW (270 lines): Fig.5 Helmholtz 2-panel; xlim 35→40, σ=30 label fix |
+| `scripts/run_sigma_sweep.py` | NEW (652 lines): σ sweep training (results disproved "High σ needed") |
+| `paper/main.tex` | Major revision: abstract, contributions, Sec III-E dual-cause, conclusion σ=1 caveat |
+| `paper/refs.bib` | +2 refs (Vlašić 2022, Wang 2021), Vlašić pages 947-952 corrected |
+| `paper/main.pdf` | Recompiled: 4 pages, 824KB |
+| `results/experiments/helmholtz_analysis.csv` | Exp A+B results |
+| `results/experiments/inference_speed.csv` | Inference speed metrics |
+| `results/experiments/dynamic_range.csv` | T dynamic range per scene |
+| `results/experiments/sigma_sweep.csv` | σ sweep: σ=1 (2.46%), σ=5 (2.74%), σ=10 (2.96%), σ=30 (10.57%) |
+| `results/paper_figures/fig_5_helmholtz_analysis.pdf` | Publication figure (updated) |
+| `results/paper_figures/sigma_sweep_tradeoff.pdf` | σ sweep visualization |
+
+---
+
+### 16. Commits (Session 16)
+
+```
+b65790b feat(paper): add Helmholtz failure analysis, inference speed, and prior work
+694814f fix(paper): correct Helmholtz failure attribution with sigma sweep evidence
+```
+
+---
+
+### 17. Phase Status
+
+| Phase | Status | Gate Result |
+|-------|--------|-------------|
+| **0: Foundation Validation** | **COMPLETE** | **PASS (1.77%)** |
+| **1: BEM Data Factory** | **COMPLETE** | **PASS (8853/8853 causal, 100%)** |
+| **2: Forward Model** | **COMPLETE** | **PASS (4.47%, quad ensemble + calib)** |
+| **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.912±0.011, 3 seeds)** |
+| **4: Validation** | **COMPLETE** | **PASS (r = 0.907±0.001, 3 seeds)** |
+| **5: Paper** | **IN PROGRESS** | Dual-cause Helmholtz fix applied, PDF submission-ready |
+
+---
+
 *Last Updated: 2026-02-20*
-*Session 16: Strengthened paper novelty with Helmholtz PDE failure analysis (r=0.19, 35,000× amplification), 2,000× inference speedup, 2 new prior work citations (Vlašić 2022, Wang 2021). Post-review: fixed cross-freq root cause, contribution evaluation mention, Fig.5 annotation, Vlašić pages 947-952. Paper: 4 pages, 826KB, 16 refs, submission-ready.*
+*Session 16: Strengthened paper novelty with Helmholtz PDE failure analysis (r=0.19, 35,000× amplification), 2,000× inference speedup, 2 new prior work citations (Vlašić 2022, Wang 2021). σ sweep completed: σ=1 gives 2.46% error + O(10¹) residual, disproving "High σ needed for accuracy." Fixed factual error with dual-cause attribution (aggravating factor, not sole cause). Paper: 4 pages, 824KB, 16 refs, submission-ready.*
