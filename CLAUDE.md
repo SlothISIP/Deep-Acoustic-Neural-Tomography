@@ -405,7 +405,7 @@ Requires Python 3.9+ and OpenCL drivers.
 | **2: Forward Model** | **COMPLETE** | **PASS (4.47%, quad ensemble + calib)** |
 | **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.912±0.011, 3 seeds)** |
 | **4: Validation** | **COMPLETE** | **PASS (r = 0.907±0.001, 3 seeds)** |
-| **5: Paper** | **IN PROGRESS** | ICASSP manuscript + baselines complete |
+| **5: Paper** | **IN PROGRESS** | Manuscript reviewed, 8 errors corrected, PDF ready |
 
 ### Known Limitations (Paper Discussion Points)
 
@@ -416,24 +416,27 @@ Requires Python 3.9+ and OpenCL drivers.
 5. **Cycle ≠ geometry accuracy**: S12 has IoU 0.49 but cycle r=0.92 — forward model compensates via non-SDF features, revealing ill-posedness.
 6. **Cross-frequency**: Extrapolation to unseen freq ranges fails (42.99% error). Model requires dense spectral coverage.
 
-### Session 11: Baseline Comparisons & Extended Experiments (2026-02-20)
+### Session 13: Final Manuscript Review & Corrections (2026-02-20)
 
 **Changes**:
-- P0: Vanilla MLP baseline — 48.00% error (= no-scatterer 47.95%), proves T formulation essential
-- P1: Extended SDF metrics — IoU 0.825, Chamfer 0.063m, Hausdorff 0.456m
-- P2b: No-Fourier ablation — 2.27% error (882 ep), FF not essential for final accuracy
-- P3: Cross-freq generalization — extrapolation 42.99%, interpolation 39.62%
-- Added `pressure` target mode to `src/dataset.py` for vanilla baseline
-- Added Chamfer/Hausdorff/boundary-L1 metrics to `src/inverse_model.py`
+- Mid-point review: Git push (2 pending commits), all 37 tests PASS, 0 TODO/FIXME
+- Full numerical audit: 28 claims verified vs CSV sources, all match
+- Corrected 8 factual/technical errors in manuscript:
+  1. Scene classification: 5→4 classes (wedges 4, cylinders 2, polygons/barriers 6, multi-body 3)
+  2. Forward model inputs: "4 scalar" → "9 scalar" with SDF features (s, ∂s/∂x, ∂s/∂y)
+  3. S12 geometry: "two disjoint cylinders" → "two parallel plates"
+  4. 2D Green's function: $e^{ikr}/(4\pi r)$ [3D] → $H_0^{(1)}(kr) \sim e^{ikr}/\sqrt{r}$ [2D]
+  5. `colton2019inverse`: `@article` → `@book`
+  6. Conclusion: disambiguate 2.27% (single, 882ep) vs 4.47% (quad ensemble)
+  7. Variance 89.6%/13%: clarify source (per-scene constant prediction)
+  8. UTD sentence: integrate with scattered field context
+- PDF verified: 4 pages, 783KB, 0 errors, 0 overfull, 12 references
 
 | File | Change |
 |------|--------|
-| `scripts/run_baseline_vanilla.py` | **NEW** — P0+P2a: vanilla MLP + no-scatterer |
-| `scripts/eval_sdf_metrics.py` | **NEW** — P1: Chamfer/Hausdorff evaluation |
-| `scripts/run_baseline_no_fourier.py` | **NEW** — P2b: no-Fourier ablation |
-| `scripts/run_cross_freq.py` | **NEW** — P3: cross-freq generalization |
-| `src/dataset.py` | Added `pressure` target mode |
-| `src/inverse_model.py` | Added 3 SDF metric functions (contour, Chamfer, boundary L1) |
+| `paper/main.tex` | 8 corrections: scene counts, inputs, Green's fn, S12, conclusion, variance, UTD |
+| `paper/refs.bib` | `colton2019inverse`: `@article` → `@book` with series/edition |
+| `paper/main.pdf` | Recompiled: 4 pages, 783KB |
 
 ---
 
@@ -527,4 +530,4 @@ project_root/
 - `scripts/run_cross_freq.py`: Phase 5 cross-frequency generalization test
 - `docs/Project_history.md`: Full session log (append-only)
 
-**Files**: 40 Python + 2 LaTeX | **Lines**: ~20,000 | **History**: See `docs/Project_history.md`
+**Files**: 40 Python + 3 LaTeX | **Lines**: ~19,800 | **History**: See `docs/Project_history.md`

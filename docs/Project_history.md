@@ -1436,3 +1436,148 @@ Updated forward ablation bar chart to match expanded Table I:
 
 *Last Updated: 2026-02-20*
 *Session 12: Manuscript polish — integrated baselines into paper, updated ablation figure, cleaned references (9→12), verified 4-page limit.*
+
+## Session 13: 2026-02-20
+
+### Final Manuscript Review & Corrections
+
+**Phase**: 5 (Paper Writing & Submission)
+
+---
+
+### 1. Mid-Point Project Review
+
+Conducted comprehensive project status check before final manuscript review:
+
+| Check | Result |
+|-------|--------|
+| Git status | Clean, 2 unpushed commits (`90fbc36`, `1595f36`) |
+| Git push | Completed to `origin/main` |
+| Python files | 40 |
+| LaTeX files | 3 |
+| Tests | **37/37 PASS** (2.97s, pytest) |
+| TODO/FIXME/HACK | **0** across all 40 Python files |
+| CSV result files | 15 files |
+| Paper figures | 7 × 2 (PDF+PNG) = 14 files |
+| Paper PDF | 764KB compiled |
+
+### 2. Numerical Consistency Audit
+
+Verified **28 numerical claims** in `paper/main.tex` against source CSV files:
+
+| Source CSV | Claims Verified | Result |
+|-----------|----------------|--------|
+| `baseline_comparison.csv` | 48.00%, 47.95% (vanilla, no-scatter) | ALL MATCH |
+| `no_fourier_ablation.csv` | 2.27% overall | MATCH |
+| `forward_ablation.csv` | 0.93%–18.62% per-scene, 4.47% ensemble | ALL MATCH |
+| `ablation_summary.csv` | Table I (8 rows), Table II (4 rows) | ALL MATCH |
+| `noise_robustness.csv` | Table III (5 rows), r=0.86 at 10dB | ALL MATCH |
+| `cross_freq_generalization.csv` | 42.99% extrap, 39.62% interp | ALL MATCH |
+| `seed_sweep.csv` | IoU 0.912±0.011, r 0.907±0.001 | ALL MATCH |
+| `loo_generalization.csv` | 52% recovery, S1:92%, S14:97% | ALL MATCH |
+| `cycle_consistency_metrics.csv` | 1,769,400 obs (sum), 13/15 > 0.92 IoU | ALL MATCH |
+| `sdf_metrics_extended.csv` | Chamfer 0.063m, Hausdorff 0.456m | ALL MATCH |
+
+### 3. Errors Found and Corrected (8 total)
+
+#### Error 1 (CRITICAL): Scene Classification — `main.tex:271-272`
+
+| | Paper (before) | Code (`scenes.py`) | Paper (after) |
+|---|---|---|---|
+| Wedges | 3 | S1-S4 = **4** | 4 |
+| Cylinders | 2 | S6-S7 = 2 | 2 |
+| Polygons | 4 | S5,S8-S11,S13 = **6** | 6 (merged "polygons and barriers") |
+| Barriers | 2 | (no category) | (merged above) |
+| Multi-body | 4 | S12,S14,S15 = **3** | 3 |
+| Classes | 5 | 4 | **4** |
+
+#### Error 2 (MAJOR): Forward Model Inputs — `main.tex:175-178`
+
+- **Before**: "4 scalar inputs—source angle φ_s, receiver angle φ_r, wavenumber k, and source–receiver distance d"
+- **After**: "9 scalar inputs: source and receiver coordinates (x_s, x_r) ∈ R^4, wavenumber k, source–receiver distance d, signed distance at the receiver s(x_r), and spatial derivatives (∂s/∂x, ∂s/∂y)"
+- **Added**: "The SDF features (s, ∂s/∂x, ∂s/∂y) condition the forward model on geometry; during inverse training (Sec. II-D), these carry gradients from the SDF decoder."
+- **Verified**: `src/forward_model.py:46` — `N_RAW_FEATURES = 9`
+
+#### Error 3 (MINOR): Reference Format — `refs.bib:49`
+
+- `colton2019inverse`: `@article` → `@book` with `series={Applied Mathematical Sciences}`, `edition={4th}`
+
+#### Error 4 (MODERATE): Conclusion Comparison — `main.tex:466-468`
+
+- **Before**: "a >10× improvement that holds even without Fourier feature encoding (2.27%)"
+- **After**: "4.47% (quad ensemble), a >10× improvement. A single model without Fourier features reaches 2.27% given sufficient training, confirming the transfer function as the primary factor."
+- Also added "(single model, 882 epochs)" to Sec III-B for context
+
+#### Error 5 (MINOR): Variance Source — `main.tex:96-98`
+
+- **Before**: "increases explained variance from 13% (raw pressure) to 89.6%"
+- **After**: "a per-scene constant prediction of T explains 89.6% of variance (vs. 13% for raw p_scat), as the transfer function removes the dominant phase oscillation spanning 12 cycles over 2–8 kHz"
+
+#### Error 6 (MINOR): UTD Sentence — `main.tex:148-149`
+
+- **Before**: "The uniform theory of diffraction [9] provides the analytical basis for edge scattering in such geometries."
+- **After**: "Edge diffraction [9] produces the dominant contribution to p_scat in our scenes."
+
+#### Error 7 (PHYSICS): 2D Green's Function — `main.tex:170`
+
+- **Before**: `$e^{ikr}/(4\pi r)$` — this is the **3D** Green's function decay
+- **After**: `$H_0^{(1)}(kr) \sim e^{ikr}/\sqrt{r}$` — correct 2D asymptotic form
+- Found during 2nd review pass
+
+#### Error 8 (FACTUAL): S12 Geometry — `main.tex:341`
+
+- **Before**: "Scene 12 (two disjoint cylinders, IoU = 0.49)"
+- **After**: "Scene 12 (two parallel plates, IoU = 0.49)"
+- Verified: `src/scenes.py:605` → `_make_multi_body_scene(12, "two_plates", ...)`
+- Found during 2nd review pass
+
+### 4. PDF Verification
+
+| Check | Result |
+|-------|--------|
+| Compilation | pdflatex + bibtex + 2× pdflatex — clean |
+| Pages | **4** (ICASSP 4+1 limit) |
+| Size | 783KB |
+| Errors | 0 |
+| Overfull hbox | 0 |
+| Underfull hbox | 5 (standard IEEEtran column-wrapping) |
+| Figures | 4 (Fig 1-4) |
+| Tables | 3 (Table I-III) |
+| Equations | 5 (Eq 1-5) |
+| References | 12 |
+
+### 5. Files Changed
+
+| File | Change |
+|------|--------|
+| `paper/main.tex` | +34/-25 lines: 8 corrections (scenes, inputs, Green's fn, S12, conclusion, variance, UTD, ref) |
+| `paper/refs.bib` | `colton2019inverse`: `@article` → `@book`, +series, +edition reorder |
+| `paper/main.pdf` | Recompiled: 4 pages, 783KB |
+
+### 6. Commits
+
+| Hash | Message |
+|------|---------|
+| `4045424` | `fix(paper): correct 8 factual/technical errors in manuscript` |
+
+### 7. Memory Update
+
+Updated `MEMORY.md` not needed — session results are documentation-only changes.
+
+---
+
+### Phase Status
+
+| Phase | Status | Gate Result |
+|-------|--------|-------------|
+| **0: Foundation Validation** | **COMPLETE** | **PASS (1.77%)** |
+| **1: BEM Data Factory** | **COMPLETE** | **PASS (8853/8853 causal, 100%)** |
+| **2: Forward Model** | **COMPLETE** | **PASS (4.47%, quad ensemble + calib)** |
+| **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.912±0.011, 3 seeds)** |
+| **4: Validation** | **COMPLETE** | **PASS (r = 0.907±0.001, 3 seeds)** |
+| **5: Paper** | **IN PROGRESS** | Manuscript reviewed, 8 errors corrected, PDF ready |
+
+---
+
+*Last Updated: 2026-02-20*
+*Session 13: Final manuscript review — audited 28 numerical claims, corrected 8 errors (scene counts, forward inputs, 2D Green's fn, S12 geometry, @book ref, conclusion clarity, variance source, UTD flow), PDF verified 4 pages clean.*
