@@ -1575,9 +1575,99 @@ Updated `MEMORY.md` not needed — session results are documentation-only change
 | **2: Forward Model** | **COMPLETE** | **PASS (4.47%, quad ensemble + calib)** |
 | **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.912±0.011, 3 seeds)** |
 | **4: Validation** | **COMPLETE** | **PASS (r = 0.907±0.001, 3 seeds)** |
-| **5: Paper** | **IN PROGRESS** | Manuscript reviewed, 8 errors corrected, PDF ready |
+| **5: Paper** | **IN PROGRESS** | Data provenance fixed, manuscript corrected, PDF ready |
 
 ---
 
 *Last Updated: 2026-02-20*
 *Session 13: Final manuscript review — audited 28 numerical claims, corrected 8 errors (scene counts, forward inputs, 2D Green's fn, S12 geometry, @book ref, conclusion clarity, variance source, UTD flow), PDF verified 4 pages clean.*
+
+---
+
+## Session 14: 2026-02-20
+
+### Data Provenance Fix + Manuscript Corrections (10 items)
+
+**Duration**: ~30 minutes
+**Phase**: 5 (Paper Writing & Submission)
+
+---
+
+### 1. Critical Data Provenance Errors Discovered
+
+Cross-validation of paper numbers against CSV files and checkpoint timestamps revealed
+that the manuscript was mixing results from **three different model versions**:
+
+| Data Item | Paper Value (Before) | Actual Source | Correct Value (v3) |
+|-----------|---------------------|---------------|-------------------|
+| CD, HD | 0.063m, 0.456m | v1 (best_phase3.pt, IoU=0.825) | **0.047m, 0.471m** |
+| S5 IoU | 0.88 | v2 (cycle_consistency_metrics.csv) | **1.000** |
+| S12 IoU in CSV | 0.258 | v2 | **0.493** |
+| Mean IoU in SDF CSV | 0.825 | v1 | **0.949** |
+
+**Root cause**: `eval_sdf_metrics.py` defaulted to `--checkpoint best_phase3` (v1),
+and `eval_phase4.py` defaulted to `--checkpoint best_phase3_v2`. Neither was re-run
+after v3 training (Session 8). Session 13's numerical audit verified CSV values matched
+the paper — but the CSVs themselves contained stale data.
+
+### 2. Corrections Applied (10 total)
+
+| # | Item | Change |
+|---|------|--------|
+| 1 | **Re-ran eval_sdf_metrics.py with v3** | CD: 0.063→0.047m, HD: 0.456→0.471m, IoU: 0.825→0.949 |
+| 2 | **Re-ran eval_phase4.py with v3** | S5 IoU: 0.882→1.000, S12: 0.258→0.493, CSV regenerated |
+| 3 | S5 IoU + exceptions text | "Thirteen of 15, exceptions S5+S12" → "Fourteen of 15, exception S12 only" |
+| 4 | Abstract/Conclusion IoU | "0.95 mean IoU" → "0.91±0.01 (3 seeds)" |
+| 5 | Abstract/Conclusion r | "r=0.90" → "r=0.91" (seed-averaged) |
+| 6 | Fig. 3 wrong reference | Removed `(Fig.~\ref{fig:ablation})` from CD/HD sentence |
+| 7 | Table I footnote | Added epoch context: No-FF 882ep vs ensemble ~200ep each |
+| 8 | Lcycle vs gate metric | Added sentence: MSE for training, Pearson r for evaluation |
+| 9 | Cross-freq interpolation | Clarified as training failure (38.21% train error), added FF encoding explanation |
+| 10 | HD context + Related Work | HD wedge/closed breakdown; added Lindell CVPR 2019 + EchoScan citations |
+
+### 3. New References Added
+
+| Key | Citation |
+|-----|----------|
+| `lindell2019acoustic` | Lindell, Wetzstein, Koltun. Acoustic NLOS Imaging. CVPR 2019 |
+| `yeon2024echoscan` | Yeon et al. EchoScan: Scanning Complex Room Geometries. ICML 2024 |
+
+### 4. Files Modified
+
+| File | Change |
+|------|--------|
+| `paper/main.tex` | 10 corrections (see above) |
+| `paper/refs.bib` | +2 references (lindell2019acoustic, yeon2024echoscan) |
+| `paper/main.pdf` | Recompiled: 4 pages, 794KB, 0 errors, 0 overfull |
+| `results/experiments/sdf_metrics_extended.csv` | Regenerated with v3 checkpoint |
+| `results/phase4/cycle_consistency_metrics.csv` | Regenerated with v3 checkpoint |
+| `results/phase4/phase4_gate_report.txt` | Regenerated with v3 checkpoint |
+| `results/phase4/*.png` | Regenerated plots with v3 data |
+
+### 5. Verification: All Numbers Now Consistent
+
+| Paper Claim | CSV Source | Match |
+|-------------|-----------|-------|
+| IoU 0.91±0.01 (Abstract) | seed_sweep.csv (0.912±0.011) | MATCH |
+| r = 0.91 (Abstract) | seed_sweep.csv (0.907±0.001) | MATCH |
+| Table II IoU 0.949 | sdf_metrics_extended.csv | MATCH |
+| Table II S12 0.493 | cycle_consistency_metrics.csv | MATCH |
+| Table II r 0.902 | cycle_consistency_metrics.csv | MATCH |
+| CD 0.047m, HD 0.471m | sdf_metrics_extended.csv | MATCH |
+| 14/15 > 0.92 | cycle_consistency_metrics.csv | MATCH |
+
+### 6. Phase Status
+
+| Phase | Status | Gate Result |
+|-------|--------|-------------|
+| **0: Foundation Validation** | **COMPLETE** | **PASS (1.77%)** |
+| **1: BEM Data Factory** | **COMPLETE** | **PASS (8853/8853 causal, 100%)** |
+| **2: Forward Model** | **COMPLETE** | **PASS (4.47%, quad ensemble + calib)** |
+| **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.912±0.011, 3 seeds)** |
+| **4: Validation** | **COMPLETE** | **PASS (r = 0.907±0.001, 3 seeds)** |
+| **5: Paper** | **IN PROGRESS** | Data provenance fixed, all numbers verified |
+
+---
+
+*Last Updated: 2026-02-20*
+*Session 14: Fixed critical data provenance errors — paper was mixing v1/v2/v3 model results. Re-ran evaluations with v3 checkpoint, corrected 10 items in manuscript, added 2 references (Lindell CVPR 2019, EchoScan ICML 2024). All numbers now verified against CSV sources.*

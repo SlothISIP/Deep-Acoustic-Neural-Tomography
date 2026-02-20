@@ -405,38 +405,36 @@ Requires Python 3.9+ and OpenCL drivers.
 | **2: Forward Model** | **COMPLETE** | **PASS (4.47%, quad ensemble + calib)** |
 | **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.912±0.011, 3 seeds)** |
 | **4: Validation** | **COMPLETE** | **PASS (r = 0.907±0.001, 3 seeds)** |
-| **5: Paper** | **IN PROGRESS** | Manuscript reviewed, 8 errors corrected, PDF ready |
+| **5: Paper** | **IN PROGRESS** | Data provenance fixed, all numbers verified, PDF ready |
 
 ### Known Limitations (Paper Discussion Points)
 
-1. **Helmholtz PDE loss disabled**: Neural surrogate ∇²p is network curvature (~10⁵ residual), not physical Laplacian. Stage 3 with Helmholtz destroyed SDF in 30 epochs. This is an architectural limitation of non-PINN forward models.
-2. **S12 multi-body**: IoU 0.618 (frozen decoder) — single SDF decoder cannot fully represent disjoint geometry. Unfrozen decoder reaches 0.98 but causes catastrophic forgetting.
+1. **Helmholtz PDE loss disabled**: Neural surrogate ∇²p is network curvature (~10⁵ residual), not physical Laplacian. Stage 3 with Helmholtz destroyed SDF in 30 epochs.
+2. **S12 multi-body**: IoU 0.49 (v3) — smooth-min composition struggles with disjoint geometry.
 3. **S13 shadow zone**: 18.62% forward error — deep shadow behind step geometry.
 4. **2D synthetic only**: No 3D extension or real measured data.
-5. **Cycle ≠ geometry accuracy**: S12 has IoU 0.49 but cycle r=0.92 — forward model compensates via non-SDF features, revealing ill-posedness.
-6. **Cross-frequency**: Extrapolation to unseen freq ranges fails (42.99% error). Model requires dense spectral coverage.
+5. **Cycle ≠ geometry accuracy**: S12 has IoU 0.49 but cycle r=0.92 — forward model compensates via non-SDF features.
+6. **Cross-frequency**: Extrapolation fails (42.99%). Interpolation fails due to data-density (38.21% train error).
 
-### Session 13: Final Manuscript Review & Corrections (2026-02-20)
+### Session 14: Data Provenance Fix + 10 Manuscript Corrections (2026-02-20)
 
 **Changes**:
-- Mid-point review: Git push (2 pending commits), all 37 tests PASS, 0 TODO/FIXME
-- Full numerical audit: 28 claims verified vs CSV sources, all match
-- Corrected 8 factual/technical errors in manuscript:
-  1. Scene classification: 5→4 classes (wedges 4, cylinders 2, polygons/barriers 6, multi-body 3)
-  2. Forward model inputs: "4 scalar" → "9 scalar" with SDF features (s, ∂s/∂x, ∂s/∂y)
-  3. S12 geometry: "two disjoint cylinders" → "two parallel plates"
-  4. 2D Green's function: $e^{ikr}/(4\pi r)$ [3D] → $H_0^{(1)}(kr) \sim e^{ikr}/\sqrt{r}$ [2D]
-  5. `colton2019inverse`: `@article` → `@book`
-  6. Conclusion: disambiguate 2.27% (single, 882ep) vs 4.47% (quad ensemble)
-  7. Variance 89.6%/13%: clarify source (per-scene constant prediction)
-  8. UTD sentence: integrate with scattered field context
-- PDF verified: 4 pages, 783KB, 0 errors, 0 overfull, 12 references
+- **Critical fix**: Paper was mixing v1/v2/v3 model results — CD/HD from v1 (IoU=0.825), S5 IoU from v2
+- Re-ran `eval_sdf_metrics.py` and `eval_phase4.py` with v3 checkpoint: CD 0.063→0.047m, HD 0.456→0.471m, S5 IoU 0.88→1.000
+- Abstract/Conclusion: "0.95 mean IoU" → "0.91±0.01 (3 seeds)", "r=0.90" → "r=0.91"
+- S5 exception removed: "13/15 > 0.92" → "14/15 > 0.92", S12 sole exception
+- Added Lindell CVPR 2019 + EchoScan ICML 2024 references, NAF differentiation
+- Table I footnote (882ep vs ~200ep), Lcycle MSE vs Pearson r clarified
+- Cross-freq interpolation clarified as training failure, HD wedge/closed breakdown added
+- PDF verified: 4 pages, 794KB, 0 errors, 0 overfull, 14 references
 
 | File | Change |
 |------|--------|
-| `paper/main.tex` | 8 corrections: scene counts, inputs, Green's fn, S12, conclusion, variance, UTD |
-| `paper/refs.bib` | `colton2019inverse`: `@article` → `@book` with series/edition |
-| `paper/main.pdf` | Recompiled: 4 pages, 783KB |
+| `paper/main.tex` | 10 corrections: provenance, IoU reporting, S5, related work, epochs, metrics |
+| `paper/refs.bib` | +2 references (lindell2019acoustic, yeon2024echoscan) |
+| `paper/main.pdf` | Recompiled: 4 pages, 794KB |
+| `results/experiments/sdf_metrics_extended.csv` | Regenerated with v3 checkpoint |
+| `results/phase4/cycle_consistency_metrics.csv` | Regenerated with v3 checkpoint |
 
 ---
 
@@ -460,7 +458,7 @@ project_root/
 │   └── inverse_dataset.py     # Per-scene structured data loader (Phase 3)
 ├── paper/                     # ICASSP manuscript
 │   ├── main.tex               # 4-page manuscript source
-│   ├── refs.bib               # Bibliography (9 entries)
+│   ├── refs.bib               # Bibliography (14 entries)
 │   └── main.pdf               # Compiled PDF
 ├── scripts/                   # Execution scripts
 │   ├── run_phase0.py          # Phase 0 validation (PASSED)
@@ -530,4 +528,4 @@ project_root/
 - `scripts/run_cross_freq.py`: Phase 5 cross-frequency generalization test
 - `docs/Project_history.md`: Full session log (append-only)
 
-**Files**: 40 Python + 3 LaTeX | **Lines**: ~19,800 | **History**: See `docs/Project_history.md`
+**Files**: 40 Python + 3 LaTeX | **Lines**: ~19,800 | **History**: See `docs/Project_history.md` (14 sessions)

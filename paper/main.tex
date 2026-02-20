@@ -53,10 +53,10 @@ pressure ratio, reducing reconstruction error from 48\% (vanilla MLP on raw
 pressure) to 4.47\% across 15 synthetic scenes by eliminating dominant phase
 oscillations;
 (2)~an \emph{auto-decoder} inverse model that maps acoustic observations to
-signed distance functions (SDF) with Eikonal regularization, yielding 0.95
-mean intersection-over-union (IoU); and
+signed distance functions (SDF) with Eikonal regularization, yielding
+$0.91 \pm 0.01$ mean intersection-over-union (IoU) across three seeds; and
 (3)~a \emph{cycle-consistency} mechanism that validates geometry through
-forward--inverse agreement (Pearson $r=0.90$).
+forward--inverse agreement (Pearson $r=0.91$).
 We demonstrate robustness to 10\,dB SNR noise ($r=0.86$), analyze
 cross-frequency generalization limits, and report that Helmholtz PDE
 enforcement through neural surrogates fails due to the gap between network
@@ -83,8 +83,14 @@ solvers~\cite{colton2019inverse}, which is computationally expensive and
 sensitive to initialization.
 Recent neural approaches learn implicit representations of acoustic
 fields~\cite{luo2022naf, su2023inras} or jointly model audio and
-geometry~\cite{liang2024acoustic}, but typically model the \emph{total}
-pressure directly, ignoring the physical structure of wave propagation.
+geometry~\cite{liang2024acoustic}, but model the \emph{total}
+pressure without recovering scene geometry.
+Acoustic NLOS imaging~\cite{lindell2019acoustic} reconstructs hidden
+objects via time-of-flight backprojection with known relay surfaces,
+and EchoScan~\cite{yeon2024echoscan} infers enclosed room geometry from
+microphone-array RIRs.
+In contrast, our work addresses monaural exterior scattering and recovers
+geometry as a signed distance function through a learned inverse model.
 Physics-informed neural networks~\cite{raissi2019physics} offer PDE
 supervision, but as we show, Helmholtz enforcement fails when applied
 through neural surrogates rather than continuous fields.
@@ -120,10 +126,10 @@ Our contributions are:
       from 48\% (vanilla MLP) to 4.47\% on 15 BEM scenes with 200
       frequencies each (Sec.~\ref{sec:forward}).
 \item An \textbf{auto-decoder inverse model} with Eikonal-regularized SDF
-      that reconstructs 2D geometry at 0.95 mean IoU, along with a
+      that reconstructs 2D geometry at $0.91 \pm 0.01$ mean IoU (best run: 0.95), along with a
       \textbf{negative result} showing Helmholtz PDE loss is incompatible
       with neural surrogates (Sec.~\ref{sec:inverse}).
-\item \textbf{Comprehensive evaluation}: cycle-consistency ($r=0.90$),
+\item \textbf{Comprehensive evaluation}: cycle-consistency ($r=0.91$),
       noise robustness (10\,dB SNR), cross-frequency generalization
       analysis, and leave-one-out tests (Sec.~\ref{sec:experiments}).
 \end{enumerate}
@@ -265,6 +271,9 @@ This creates a differentiable loop: latent code $\bm{z}_i \to$
 SDF at receivers $\to$ forward prediction $\to$ comparison with BEM data.
 The gradient flows through the SDF decoder, providing acoustic supervision
 for geometry beyond the SDF loss alone.
+We use the MSE loss~\eqref{eq:cycle} for training, and report Pearson
+correlation $r$ as the evaluation metric (Sec.~\ref{sec:robustness})
+because it is scale-invariant and interpretable.
 
 % ========================================================================
 % 3. EXPERIMENTS
@@ -317,7 +326,7 @@ Configuration & Target & Error (\%) \\
 \midrule
 No scatterer ($\hat{p}=\pinc$) & --- & 47.95 \\
 Vanilla MLP & $\pscat$ & 48.00 \\
-No Fourier features & $T$ & 2.27 \\
+No Fourier features\footnotemark & $T$ & 2.27 \\
 \midrule
 Single model & $T$ & 11.54 \\
 + calibration & $T$ & 10.20 \\
@@ -326,6 +335,9 @@ Quad ensemble & $T$ & 4.57 \\
 \textbf{Quad ens.\ + calib} & $T$ & \textbf{4.47} \\
 \bottomrule
 \end{tabular}
+\footnotetext{Single model trained for 882 epochs (${\sim}3.2$\,h);
+each ensemble member trains ${\sim}200$ epochs (${\sim}40$\,min).
+The ensemble provides a better efficiency--accuracy tradeoff.}
 \end{table}
 
 % -----------------------------------------------------------------------
@@ -336,13 +348,16 @@ Table~\ref{tab:inverse_ablation} shows the inverse model ablation.
 Starting from SDF + Eikonal losses (IoU\,=\,0.69), adding boundary
 oversampling ($+$0.15), cycle-consistency ($+$0.10), and multi-code
 composition ($+$0.01) yields a final mean IoU of 0.9491.
-Thirteen of 15 scenes achieve IoU\,$>$\,0.92 (Fig.~\ref{fig:sdf_gallery});
-the exceptions are Scene~5 (thin barrier, IoU\,=\,0.88) and
-Scene~12 (two parallel plates, IoU\,=\,0.49), where the smooth-minimum
-composition~\eqref{eq:smooth_min} struggles with separated bodies.
+Fourteen of 15 scenes achieve IoU\,$>$\,0.92 (Fig.~\ref{fig:sdf_gallery});
+the sole exception is Scene~12 (two parallel plates, IoU\,=\,0.49),
+where the smooth-minimum composition~\eqref{eq:smooth_min} struggles
+with disjoint bodies.
 Supplementary geometry metrics confirm reconstruction quality:
-mean Chamfer distance 0.063\,m and mean Hausdorff distance 0.456\,m
-across the 15 scenes (Fig.~\ref{fig:ablation}).
+mean Chamfer distance 0.047\,m and mean Hausdorff distance 0.471\,m
+across the 15 scenes (Hausdorff is dominated by wedge scenes S1--S4,
+where open-mesh truncation creates edge artifacts at
+$\mathrm{HD} > 0.8$\,m; closed-surface scenes achieve
+$\mathrm{HD} < 0.035$\,m).
 
 \begin{table}[t]
 \centering
@@ -375,7 +390,7 @@ multi-body Scene~12 (IoU\,=\,0.49).}
 \includegraphics[width=\columnwidth]{fig_5_ablation_bars.pdf}
 \caption{Ablation study. (a)~Forward: the $T$ formulation reduces error
 from 48\% to single digits; ensemble further improves to 4.5\%.
-(b)~Inverse: each component contributes to the final IoU of 0.95.}
+(b)~Inverse: each component contributes to the final IoU of 0.95 (best run).}
 \label{fig:ablation}
 \end{figure}
 
@@ -426,9 +441,13 @@ We evaluate frequency extrapolation (train: 2--6\,kHz, test: 6--8\,kHz)
 and interpolation (train: even-index, test: odd-index frequencies).
 Extrapolation yields 42.99\% test error (vs.\ 4.92\% train), indicating
 the model memorizes per-frequency patterns rather than learning a
-frequency-continuous representation. Interpolation similarly gives 39.62\%
-test error---the 60\,Hz spectral gap between training frequencies
-exceeds the model's generalization bandwidth.
+frequency-continuous representation---the random Fourier feature encoding
+treats $k$ as a positional input, providing no guarantee of smooth
+spectral interpolation.
+The interpolation split (even$\to$odd frequencies, 60\,Hz gap) yields
+38.21\% \emph{training} error, indicating a data-density failure rather
+than a generalization gap: 100 training frequencies are insufficient
+to cover the spectral domain.
 
 \textbf{Seed variance.}
 Training with 3 random seeds $\{42, 123, 456\}$ yields mean
@@ -475,8 +494,9 @@ contribution: it reduces forward error from 48\% (vanilla baseline) to
 4.47\% (quad ensemble), a $>$10$\times$ improvement. A single model
 without Fourier features reaches 2.27\% given sufficient training,
 confirming the transfer function as the primary factor.
-The auto-decoder inverse model with Eikonal regularization achieves 0.95 mean IoU, and cycle-consistency provides
-acoustic validation ($r = 0.90$) robust to 10\,dB noise. Frequency
+The auto-decoder inverse model with Eikonal regularization achieves
+$0.91 \pm 0.01$ mean IoU (3 seeds; best run 0.95), and cycle-consistency
+provides acoustic validation ($r = 0.91 \pm 0.001$) robust to 10\,dB noise. Frequency
 generalization remains limited: the model memorizes per-frequency
 patterns rather than learning continuous spectral representations.
 Our negative result on Helmholtz PDE loss highlights a fundamental gap
