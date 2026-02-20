@@ -1669,5 +1669,106 @@ the paper — but the CSVs themselves contained stale data.
 
 ---
 
+*Last Updated: 2026-02-20 (Session 14)*
+
+---
+
+## Session 15: 2026-02-20
+
+### Final Review Fixes — EchoScan Venue, r Rounding Error, Footnote Rendering
+
+**Duration**: ~15 minutes
+**Phase**: 5 (Paper Writing & Submission)
+
+---
+
+### 1. Context
+
+External manuscript review identified 3 remaining minor issues after Session 14's
+10-item provenance fix. All 3 are citation/numerical precision/rendering issues
+that required no re-running of experiments.
+
+---
+
+### 2. Fix A: EchoScan Venue Correction
+
+**Problem**: `refs.bib` cited EchoScan as `@inproceedings{...booktitle={International Conference on Machine Learning}, year={2024}}`.
+
+**Investigation**: Web search + arXiv page (2310.11728) confirmed the actual venue:
+> IEEE/ACM Transactions on Audio, Speech, and Language Processing, vol. 32, pp. 4768–4782, 2024
+
+**Fix** (`paper/refs.bib:116-122`):
+- Changed `@inproceedings` → `@article`
+- Changed `booktitle={International Conference on Machine Learning}` → `journal={IEEE/ACM Transactions on Audio, Speech, and Language Processing}`
+- Added `volume={32}`, `pages={4768--4782}`
+
+**PDF verification**: Reference [8] now correctly reads:
+> I. Yeon et al., "EchoScan: Scanning complex room geometries via acoustic echoes," IEEE/ACM Trans. Audio, Speech, Lang. Process., vol. 32, pp. 4768–4782, 2024.
+
+---
+
+### 3. Fix B: Conclusion r Value — Mathematical Rounding Error
+
+**Problem**: Conclusion stated `r = 0.91 ± 0.001`, but the actual 3-seed average is
+`r = 0.907 ± 0.001`. The notation `0.91 ± 0.001` implies a range of [0.909, 0.911],
+which does **not** contain the true value 0.907.
+
+**Fix** (`paper/main.tex:499`):
+- `$r = 0.91 \pm 0.001$` → `$r = 0.907 \pm 0.001$`
+
+**2-tier reporting scheme (final, verified)**:
+
+| Location | Value | Type | Consistent? |
+|----------|-------|------|-------------|
+| Abstract | r=0.91 | Rounded (no ±) | YES |
+| Contribution 3 | r=0.91 | Rounded (no ±) | YES |
+| Sec III-C | r = 0.90 | Best-run 0.902 rounded | YES |
+| Fig.4 caption | r = 0.90 | Best-run 0.902 rounded | YES |
+| Table II | 0.902 | Best-run precise | YES |
+| Table III | 0.902 | Best-run precise | YES |
+| Sec III-D seed | r = 0.907 ± 0.001 | 3-seed precise | YES |
+| Conclusion | r = 0.907 ± 0.001 | 3-seed precise | **FIXED** |
+
+---
+
+### 4. Fix D: Table I Footnote Non-Rendering in IEEEtran
+
+**Problem**: `\footnotemark` inside a `table` float + `\footnotetext` after `\end{tabular}`
+can fail to render in IEEEtran conference class because footnotes inside floats are not
+reliably placed at the page bottom.
+
+**Fix** (`paper/main.tex:329,338-340`):
+- `No Fourier features\footnotemark` → `No Fourier features$^*$`
+- `\footnotetext{...}` → `\multicolumn{3}{l}{\footnotesize $^*$...}` (inline table note)
+
+**PDF verification**: Table I on page 3 shows `No Fourier features*` in the table body
+and the note text `*Single model, 882 epochs (~3.2 h); ensemble members train ~200 epochs
+(~40 min) each with better efficiency.` directly below the `\bottomrule`.
+
+---
+
+### 5. Files Modified
+
+| File | Change |
+|------|--------|
+| `paper/refs.bib` | EchoScan: `@inproceedings{ICML}` → `@article{TASLP, vol.32, pp.4768-4782}` |
+| `paper/main.tex` | Line 499: r=0.91±0.001 → 0.907±0.001; Lines 329,338-340: footnote → table note |
+| `paper/main.pdf` | Recompiled: 4 pages, 804KB, 0 errors, 0 overfull, 14 references |
+
+---
+
+### 6. Phase Status
+
+| Phase | Status | Gate Result |
+|-------|--------|-------------|
+| **0: Foundation Validation** | **COMPLETE** | **PASS (1.77%)** |
+| **1: BEM Data Factory** | **COMPLETE** | **PASS (8853/8853 causal, 100%)** |
+| **2: Forward Model** | **COMPLETE** | **PASS (4.47%, quad ensemble + calib)** |
+| **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.912±0.011, 3 seeds)** |
+| **4: Validation** | **COMPLETE** | **PASS (r = 0.907±0.001, 3 seeds)** |
+| **5: Paper** | **IN PROGRESS** | Final review fixes applied, PDF submission-ready |
+
+---
+
 *Last Updated: 2026-02-20*
-*Session 14: Fixed critical data provenance errors — paper was mixing v1/v2/v3 model results. Re-ran evaluations with v3 checkpoint, corrected 10 items in manuscript, added 2 references (Lindell CVPR 2019, EchoScan ICML 2024). All numbers now verified against CSV sources.*
+*Session 15: Fixed 3 final review items — EchoScan venue (ICML→TASLP), Conclusion r rounding error (0.91±0.001→0.907±0.001), Table I footnote rendering (IEEEtran float fix). PDF: 4 pages, 804KB, submission-ready.*

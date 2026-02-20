@@ -405,7 +405,7 @@ Requires Python 3.9+ and OpenCL drivers.
 | **2: Forward Model** | **COMPLETE** | **PASS (4.47%, quad ensemble + calib)** |
 | **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.912±0.011, 3 seeds)** |
 | **4: Validation** | **COMPLETE** | **PASS (r = 0.907±0.001, 3 seeds)** |
-| **5: Paper** | **IN PROGRESS** | Data provenance fixed, all numbers verified, PDF ready |
+| **5: Paper** | **IN PROGRESS** | Final review fixes applied, PDF submission-ready |
 
 ### Known Limitations (Paper Discussion Points)
 
@@ -416,25 +416,20 @@ Requires Python 3.9+ and OpenCL drivers.
 5. **Cycle ≠ geometry accuracy**: S12 has IoU 0.49 but cycle r=0.92 — forward model compensates via non-SDF features.
 6. **Cross-frequency**: Extrapolation fails (42.99%). Interpolation fails due to data-density (38.21% train error).
 
-### Session 14: Data Provenance Fix + 10 Manuscript Corrections (2026-02-20)
+### Session 15: Final Review Fixes — EchoScan venue, r rounding, footnote (2026-02-20)
 
 **Changes**:
-- **Critical fix**: Paper was mixing v1/v2/v3 model results — CD/HD from v1 (IoU=0.825), S5 IoU from v2
-- Re-ran `eval_sdf_metrics.py` and `eval_phase4.py` with v3 checkpoint: CD 0.063→0.047m, HD 0.456→0.471m, S5 IoU 0.88→1.000
-- Abstract/Conclusion: "0.95 mean IoU" → "0.91±0.01 (3 seeds)", "r=0.90" → "r=0.91"
-- S5 exception removed: "13/15 > 0.92" → "14/15 > 0.92", S12 sole exception
-- Added Lindell CVPR 2019 + EchoScan ICML 2024 references, NAF differentiation
-- Table I footnote (882ep vs ~200ep), Lcycle MSE vs Pearson r clarified
-- Cross-freq interpolation clarified as training failure, HD wedge/closed breakdown added
-- PDF verified: 4 pages, 794KB, 0 errors, 0 overfull, 14 references
+- **EchoScan venue fix**: `refs.bib` ICML 2024 → IEEE/ACM TASLP vol.32 pp.4768-4782, 2024 (confirmed via arXiv 2310.11728)
+- **Conclusion r fix**: `r = 0.91 ± 0.001` → `r = 0.907 ± 0.001` (0.91±0.001 was mathematically incorrect — 0.907 outside [0.909, 0.911])
+- **Table I footnote fix**: `\footnotemark`/`\footnotetext` → inline `$^*$` + `\multicolumn` table note (IEEEtran float footnote non-rendering fix)
+- **2-tier r reporting verified**: prose uses 0.91 (rounded), tables use 0.902/0.907 (precise) — consistent throughout
+- PDF verified: 4 pages, 804KB, 0 errors, 0 overfull, 14 references
 
 | File | Change |
 |------|--------|
-| `paper/main.tex` | 10 corrections: provenance, IoU reporting, S5, related work, epochs, metrics |
-| `paper/refs.bib` | +2 references (lindell2019acoustic, yeon2024echoscan) |
-| `paper/main.pdf` | Recompiled: 4 pages, 794KB |
-| `results/experiments/sdf_metrics_extended.csv` | Regenerated with v3 checkpoint |
-| `results/phase4/cycle_consistency_metrics.csv` | Regenerated with v3 checkpoint |
+| `paper/refs.bib` | EchoScan: `@inproceedings{ICML}` → `@article{TASLP, vol.32, pp.4768-4782}` |
+| `paper/main.tex` | Conclusion r=0.91±0.001 → 0.907±0.001; Table I footnote → table note |
+| `paper/main.pdf` | Recompiled: 4 pages, 804KB |
 
 ---
 
@@ -528,4 +523,4 @@ project_root/
 - `scripts/run_cross_freq.py`: Phase 5 cross-frequency generalization test
 - `docs/Project_history.md`: Full session log (append-only)
 
-**Files**: 40 Python + 3 LaTeX | **Lines**: ~19,800 | **History**: See `docs/Project_history.md` (14 sessions)
+**Files**: 40 Python + 3 LaTeX | **Lines**: ~19,800 | **History**: See `docs/Project_history.md` (15 sessions)

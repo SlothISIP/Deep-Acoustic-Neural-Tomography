@@ -326,7 +326,7 @@ Configuration & Target & Error (\%) \\
 \midrule
 No scatterer ($\hat{p}=\pinc$) & --- & 47.95 \\
 Vanilla MLP & $\pscat$ & 48.00 \\
-No Fourier features\footnotemark & $T$ & 2.27 \\
+No Fourier features$^*$ & $T$ & 2.27 \\
 \midrule
 Single model & $T$ & 11.54 \\
 + calibration & $T$ & 10.20 \\
@@ -334,10 +334,10 @@ Duo ensemble + calib & $T$ & 9.89 \\
 Quad ensemble & $T$ & 4.57 \\
 \textbf{Quad ens.\ + calib} & $T$ & \textbf{4.47} \\
 \bottomrule
+\multicolumn{3}{l}{\footnotesize $^*$Single model, 882 epochs (${\sim}3.2$\,h);
+ensemble members train}\\
+\multicolumn{3}{l}{\footnotesize \phantom{$^*$}${\sim}200$ epochs (${\sim}40$\,min) each with better efficiency.}
 \end{tabular}
-\footnotetext{Single model trained for 882 epochs (${\sim}3.2$\,h);
-each ensemble member trains ${\sim}200$ epochs (${\sim}40$\,min).
-The ensemble provides a better efficiency--accuracy tradeoff.}
 \end{table}
 
 % -----------------------------------------------------------------------
@@ -496,7 +496,7 @@ without Fourier features reaches 2.27\% given sufficient training,
 confirming the transfer function as the primary factor.
 The auto-decoder inverse model with Eikonal regularization achieves
 $0.91 \pm 0.01$ mean IoU (3 seeds; best run 0.95), and cycle-consistency
-provides acoustic validation ($r = 0.91 \pm 0.001$) robust to 10\,dB noise. Frequency
+provides acoustic validation ($r = 0.907 \pm 0.001$) robust to 10\,dB noise. Frequency
 generalization remains limited: the model memorizes per-frequency
 patterns rather than learning continuous spectral representations.
 Our negative result on Helmholtz PDE loss highlights a fundamental gap
