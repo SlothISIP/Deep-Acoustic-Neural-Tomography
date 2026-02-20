@@ -405,31 +405,38 @@ Requires Python 3.9+ and OpenCL drivers.
 | **2: Forward Model** | **COMPLETE** | **PASS (4.47%, quad ensemble + calib)** |
 | **3: Inverse Model** | **COMPLETE** | **PASS (IoU 0.912±0.011, 3 seeds)** |
 | **4: Validation** | **COMPLETE** | **PASS (r = 0.907±0.001, 3 seeds)** |
-| **5: Paper** | **IN PROGRESS** | Final review fixes applied, PDF submission-ready |
+| **5: Paper** | **IN PROGRESS** | Novelty strengthened, PDF submission-ready |
 
 ### Known Limitations (Paper Discussion Points)
 
-1. **Helmholtz PDE loss disabled**: Neural surrogate ∇²p is network curvature (~10⁵ residual), not physical Laplacian. Stage 3 with Helmholtz destroyed SDF in 30 epochs.
+1. **Helmholtz PDE loss incompatible**: Neural ∇²p correlates at r=0.19 with physical ∇²p (3.5% variance). Fourier feature σ=30 amplifies 2nd derivatives 35,000×. Enabling loss collapsed IoU 0.82→0.19 in 30 epochs.
 2. **S12 multi-body**: IoU 0.49 (v3) — smooth-min composition struggles with disjoint geometry.
 3. **S13 shadow zone**: 18.62% forward error — deep shadow behind step geometry.
 4. **2D synthetic only**: No 3D extension or real measured data.
 5. **Cycle ≠ geometry accuracy**: S12 has IoU 0.49 but cycle r=0.92 — forward model compensates via non-SDF features.
-6. **Cross-frequency**: Extrapolation fails (42.99%). Interpolation fails due to data-density (38.21% train error).
+6. **Cross-frequency**: Extrapolation fails (42.99%).
 
-### Session 15: Final Review Fixes — EchoScan venue, r rounding, footnote (2026-02-20)
+### Session 16: Novelty Strengthening — Helmholtz Analysis, Inference Speed, Prior Work (2026-02-20)
 
 **Changes**:
-- **EchoScan venue fix**: `refs.bib` ICML 2024 → IEEE/ACM TASLP vol.32 pp.4768-4782, 2024 (confirmed via arXiv 2310.11728)
-- **Conclusion r fix**: `r = 0.91 ± 0.001` → `r = 0.907 ± 0.001` (0.91±0.001 was mathematically incorrect — 0.907 outside [0.909, 0.911])
-- **Table I footnote fix**: `\footnotemark`/`\footnotetext` → inline `$^*$` + `\multicolumn` table note (IEEEtran float footnote non-rendering fix)
-- **2-tier r reporting verified**: prose uses 0.91 (rounded), tables use 0.902/0.907 (precise) — consistent throughout
-- PDF verified: 4 pages, 804KB, 0 errors, 0 overfull, 14 references
+- **Exp A**: Neural vs Physical Laplacian → r=0.19 (3.5% variance explained)
+- **Exp B**: Fourier feature σ² amplification → 35,000× theoretical, 55,000× empirical
+- **Inference speed**: 2,000× speedup (130ms vs 260s per scene)
+- **Prior work**: Added Vlašić et al. (2022) SDF inverse scattering, Wang et al. (2021) Fourier NTK
+- **Paper restructured**: Helmholtz analysis → independent Contribution #3
+- **Space optimization**: Removed Table III (noise) + Fig.6 (cycle), compressed Robustness 50→10 lines
+- **Post-review fixes**: cross-freq root cause restored, evaluation mention in contributions, Fig.5 annotation fix, Vlašić pages 947-952 corrected
+- PDF verified: 4 pages, 826KB, 0 errors, 0 overfull, 16 references
 
 | File | Change |
 |------|--------|
-| `paper/refs.bib` | EchoScan: `@inproceedings{ICML}` → `@article{TASLP, vol.32, pp.4768-4782}` |
-| `paper/main.tex` | Conclusion r=0.91±0.001 → 0.907±0.001; Table I footnote → table note |
-| `paper/main.pdf` | Recompiled: 4 pages, 804KB |
+| `scripts/run_helmholtz_analysis.py` | NEW: neural Laplacian + σ amplification analysis |
+| `scripts/measure_inference_speed.py` | NEW: BEM vs neural speed + T dynamic range |
+| `scripts/generate_helmholtz_figure.py` | NEW: Fig.5 Helmholtz 2-panel figure |
+| `scripts/run_sigma_sweep.py` | NEW: σ sweep training (optional, not in paper) |
+| `paper/main.tex` | Major revision: abstract, contributions, Sec III-E expanded |
+| `paper/refs.bib` | +2 refs (Vlašić 2022, Wang 2021), total 16 |
+| `paper/main.pdf` | Recompiled: 4 pages, 826KB |
 
 ---
 
@@ -453,7 +460,7 @@ project_root/
 │   └── inverse_dataset.py     # Per-scene structured data loader (Phase 3)
 ├── paper/                     # ICASSP manuscript
 │   ├── main.tex               # 4-page manuscript source
-│   ├── refs.bib               # Bibliography (14 entries)
+│   ├── refs.bib               # Bibliography (16 entries)
 │   └── main.pdf               # Compiled PDF
 ├── scripts/                   # Execution scripts
 │   ├── run_phase0.py          # Phase 0 validation (PASSED)
@@ -475,7 +482,11 @@ project_root/
 │   ├── run_baseline_vanilla.py # Phase 5: vanilla MLP + no-scatterer
 │   ├── run_baseline_no_fourier.py # Phase 5: no-Fourier ablation
 │   ├── eval_sdf_metrics.py    # Phase 5: extended SDF metrics
-│   └── run_cross_freq.py      # Phase 5: cross-freq generalization
+│   ├── run_cross_freq.py      # Phase 5: cross-freq generalization
+│   ├── run_helmholtz_analysis.py # Phase 5: Helmholtz PDE failure analysis
+│   ├── measure_inference_speed.py # Phase 5: BEM vs neural speed + T range
+│   ├── generate_helmholtz_figure.py # Phase 5: Fig.5 Helmholtz 2-panel
+│   └── run_sigma_sweep.py     # Phase 5: σ sweep accuracy-physics tradeoff
 ├── tests/                     # Tests + diagnostics
 │   ├── test_inverse_model.py  # Phase 3 unit tests (37 tests)
 │   └── diagnostics/           # Phase 0 debug scripts (archived)
@@ -521,6 +532,10 @@ project_root/
 - `scripts/run_baseline_no_fourier.py`: Phase 5 no-Fourier-feature ablation
 - `scripts/eval_sdf_metrics.py`: Phase 5 extended SDF metrics (Chamfer, Hausdorff)
 - `scripts/run_cross_freq.py`: Phase 5 cross-frequency generalization test
+- `scripts/run_helmholtz_analysis.py`: Phase 5 Helmholtz PDE failure analysis (Exp A+B)
+- `scripts/measure_inference_speed.py`: Phase 5 inference speed + T dynamic range
+- `scripts/generate_helmholtz_figure.py`: Phase 5 Fig.5 Helmholtz 2-panel figure
+- `scripts/run_sigma_sweep.py`: Phase 5 σ sweep accuracy-physics tradeoff
 - `docs/Project_history.md`: Full session log (append-only)
 
-**Files**: 40 Python + 3 LaTeX | **Lines**: ~19,800 | **History**: See `docs/Project_history.md` (15 sessions)
+**Files**: 44 Python + 3 LaTeX | **Lines**: ~21,800 | **History**: See `docs/Project_history.md` (16 sessions)

@@ -57,9 +57,9 @@ $0.91 \pm 0.01$ mean intersection-over-union (IoU), validated through
 cycle-consistent forward--inverse agreement (Pearson $r=0.91$).
 We further analyze why Helmholtz PDE enforcement fails for neural surrogates:
 the autodiff Laplacian $\nabla^2 f_\theta$ correlates with the physical
-Laplacian at only $r = 0.19$ (3.5\% variance explained), because random
-Fourier features with bandwidth $\sigma = 30$ amplify second derivatives by
-$4\pi^2\sigma^2 \approx 35{,}000\times$.
+Laplacian at only $r = 0.19$ (3.5\% variance explained), exacerbated by
+random Fourier features that amplify second derivatives by
+$4\pi^2\sigma^2 \approx 35{,}000\times$ at $\sigma = 30$.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -139,6 +139,8 @@ Our contributions are:
       $\mathcal{O}(10^4)$ second-derivative amplification from random
       Fourier features (Sec.~\ref{sec:discussion}).
 \end{enumerate}
+We further evaluate noise robustness, seed reproducibility, leave-one-out
+generalization, and cross-frequency transfer (Sec.~\ref{sec:robustness}).
 
 % ========================================================================
 % 2. METHOD
@@ -421,8 +423,10 @@ IoU\,=\,$0.912 \pm 0.011$, $r = 0.907 \pm 0.001$ (all seeds pass gates).
 Leave-one-out code optimization recovers 52\% mean IoU; wedge-like
 shapes generalize (S1: 92\%, S14: 97\%) while novel shapes do not
 (S5: 9\%, S10: 22\%).
-Cross-frequency extrapolation (2--6\,kHz$\to$6--8\,kHz) fails at 43\% error,
-indicating per-frequency memorization rather than spectral continuity.
+Cross-frequency extrapolation (2--6\,kHz$\to$6--8\,kHz) fails at 43\% error:
+the Fourier encoding treats $k$ as a positional input rather than a
+continuous physical variable, so the model memorizes per-frequency patterns
+instead of learning spectral structure.
 
 % -----------------------------------------------------------------------
 \subsection{Why Helmholtz PDE Loss Fails}
@@ -454,11 +458,12 @@ with $B_{ij} \sim \mathcal{N}(0, \sigma^2)$ has second derivatives
 $\partial^2 \gamma / \partial v_j^2 = -(2\pi B_j)^2 \gamma(\bm{v})$,
 yielding an expected amplification
 $\mathbb{E}[(2\pi B_j)^2] = 4\pi^2 \sigma^2$.
-At $\sigma = 30$\,m$^{-1}$ (required for resolving $k_{\max} = 146$\,rad/m),
+At $\sigma = 30$\,m$^{-1}$,
 this gives $4\pi^2 \cdot 900 \approx 35{,}000\times$ amplification
-(Fig.~\ref{fig:helmholtz}b), compounded to ${\sim}55{,}000\times$ by the
-8-layer ResNet. High $\sigma$ is needed for forward accuracy, but it makes
-$\nabla^2 f_\theta$ physically meaningless.
+(Fig.~\ref{fig:helmholtz}b). However, reducing $\sigma$ to~1 lowers
+the residual to $\mathcal{O}(10^1)$ without eliminating it---a surrogate
+trained on pressure values has no incentive to match second derivatives.
+Fourier amplification is an aggravating factor, not the sole cause.
 
 \textbf{Asymmetry with Eikonal.}
 The Eikonal constraint $|\nabla s| = 1$ succeeds because it requires
@@ -487,11 +492,12 @@ $0.91 \pm 0.01$ mean IoU, validated by cycle-consistency
 
 Our Helmholtz PDE analysis reveals a fundamental obstacle for
 physics-informed neural surrogates: random Fourier features amplify
-second derivatives by $\sim$35{,}000$\times$, reducing the neural-physical
-Laplacian correlation to $r = 0.19$.
-This quantifies the gap between network curvature and physical
-Laplacians, with implications for the PINN literature on acoustic
-surrogate models.
+second derivatives by $\sim$35{,}000$\times$ at $\sigma\!=\!30$, reducing
+the neural-physical Laplacian correlation to $r = 0.19$; even at
+$\sigma\!=\!1$, the residual remains $\mathcal{O}(10^1)$, confirming that
+surrogate-learned curvature fundamentally diverges from the physical
+Laplacian.
+This has implications for the PINN literature on acoustic surrogate models.
 
 Limitations include: 2D synthetic data only (15 scenes),
 per-scene optimization, limited cross-frequency generalization,

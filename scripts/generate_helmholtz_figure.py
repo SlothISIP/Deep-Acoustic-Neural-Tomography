@@ -243,7 +243,7 @@ def main() -> None:
         ax2.annotate(
             f"$\\sigma$={sv}\n{av:.0f}$\\times$",
             (sv, av), textcoords="offset points",
-            xytext=(8, -2 if sv != 30 else 5),
+            xytext=(-45, 5) if sv == 30 else (8, -2),
             fontsize=6.5, color=color,
         )
 
@@ -253,7 +253,7 @@ def main() -> None:
     ax2.set_yscale("log")
     ax2.tick_params(labelsize=7)
     ax2.grid(True, alpha=0.2)
-    ax2.set_xlim(0, 35)
+    ax2.set_xlim(0, 40)
     ax2.set_ylim(1, 5e5)
 
     fig.tight_layout(pad=0.5)
