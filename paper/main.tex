@@ -47,20 +47,19 @@ Cycle-Consistent Geometry Reconstruction from 2D BEM Data}
 \begin{abstract}
 We present a neural framework for 2D acoustic diffraction tomography that
 reconstructs scene geometry from boundary element method (BEM) simulations.
-Our approach introduces three components:
-(1)~a \emph{transfer function} formulation that learns the scattered-to-incident
-pressure ratio, reducing reconstruction error from 48\% (vanilla MLP on raw
-pressure) to 4.47\% across 15 synthetic scenes by eliminating dominant phase
-oscillations;
-(2)~an \emph{auto-decoder} inverse model that maps acoustic observations to
+Our approach introduces a \emph{transfer function} formulation that learns
+the scattered-to-incident pressure ratio, reducing reconstruction error from
+48\% (vanilla MLP on raw pressure) to 4.47\% across 15 synthetic scenes
+while providing $2{,}000\times$ speedup over BEM inference.
+An \emph{auto-decoder} inverse model maps acoustic observations to
 signed distance functions (SDF) with Eikonal regularization, yielding
-$0.91 \pm 0.01$ mean intersection-over-union (IoU) across three seeds; and
-(3)~a \emph{cycle-consistency} mechanism that validates geometry through
-forward--inverse agreement (Pearson $r=0.91$).
-We demonstrate robustness to 10\,dB SNR noise ($r=0.86$), analyze
-cross-frequency generalization limits, and report that Helmholtz PDE
-enforcement through neural surrogates fails due to the gap between network
-curvature and physical Laplacians.
+$0.91 \pm 0.01$ mean intersection-over-union (IoU), validated through
+cycle-consistent forward--inverse agreement (Pearson $r=0.91$).
+We further analyze why Helmholtz PDE enforcement fails for neural surrogates:
+the autodiff Laplacian $\nabla^2 f_\theta$ correlates with the physical
+Laplacian at only $r = 0.19$ (3.5\% variance explained), because random
+Fourier features with bandwidth $\sigma = 30$ amplify second derivatives by
+$4\pi^2\sigma^2 \approx 35{,}000\times$.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -89,11 +88,16 @@ Acoustic NLOS imaging~\cite{lindell2019acoustic} reconstructs hidden
 objects via time-of-flight backprojection with known relay surfaces,
 and EchoScan~\cite{yeon2024echoscan} infers enclosed room geometry from
 microphone-array RIRs.
-In contrast, our work addresses monaural exterior scattering and recovers
-geometry as a signed distance function through a learned inverse model.
+Vla\v{s}i\'c et al.~\cite{vlasic2022implicit} represent obstacles as SDF
+zero-level-sets for inverse scattering but rely on a classical boundary
+integral solver at each iteration.
+Our work replaces the PDE solver with a learned transfer function
+surrogate ($2{,}000\times$ speedup) and adds cycle-consistency through
+the neural forward model for geometry validation.
 Physics-informed neural networks~\cite{raissi2019physics} offer PDE
 supervision, but as we show, Helmholtz enforcement fails when applied
-through neural surrogates rather than continuous fields.
+through neural surrogates with high-bandwidth Fourier
+features~\cite{wang2021eigenvector}.
 
 We propose a two-stage neural framework for 2D acoustic diffraction
 tomography (Fig.~\ref{fig:architecture}). In the \emph{forward} stage,
@@ -122,16 +126,18 @@ surrogates and is \emph{disabled} (Sec.~\ref{sec:discussion}).}
 
 Our contributions are:
 \begin{enumerate}
-\item A \textbf{transfer function formulation} that reduces forward error
-      from 48\% (vanilla MLP) to 4.47\% on 15 BEM scenes with 200
-      frequencies each (Sec.~\ref{sec:forward}).
+\item A \textbf{transfer function formulation} $T = \pscat/\pinc$ that
+      reduces forward error from 48\% to 4.47\% at $2{,}000\times$ BEM
+      speedup on 15 scenes with 200 frequencies (Sec.~\ref{sec:forward}).
 \item An \textbf{auto-decoder inverse model} with Eikonal-regularized SDF
-      that reconstructs 2D geometry at $0.91 \pm 0.01$ mean IoU (best run: 0.95), along with a
-      \textbf{negative result} showing Helmholtz PDE loss is incompatible
-      with neural surrogates (Sec.~\ref{sec:inverse}).
-\item \textbf{Comprehensive evaluation}: cycle-consistency ($r=0.91$),
-      noise robustness (10\,dB SNR), cross-frequency generalization
-      analysis, and leave-one-out tests (Sec.~\ref{sec:experiments}).
+      that reconstructs geometry at $0.91 \pm 0.01$ mean IoU, validated
+      via cycle-consistency ($r = 0.91$) and robust to 10\,dB noise
+      (Sec.~\ref{sec:inverse}).
+\item \textbf{Analysis of Helmholtz PDE failure} in neural surrogates:
+      we show that the autodiff Laplacian explains only 3.5\% of the
+      physical Laplacian's variance ($r = 0.19$), caused by
+      $\mathcal{O}(10^4)$ second-derivative amplification from random
+      Fourier features (Sec.~\ref{sec:discussion}).
 \end{enumerate}
 
 % ========================================================================
@@ -245,12 +251,11 @@ Table~\ref{tab:inverse_ablation}).
 
 \textbf{On Helmholtz PDE loss.}
 A natural extension would add a Helmholtz residual loss
-$\|\nabla^2 \hat{p} + k^2 \hat{p}\|^2$ using the forward surrogate.
-However, we found this \emph{degrades} reconstruction: the neural network's
-$\nabla^2$ (computed via automatic differentiation) captures network curvature,
-not the physical Laplacian of the pressure field. Enabling Helmholtz loss
-reduced IoU from 0.82 to 0.19 within 30 epochs in our experiments. We report
-this as a negative result (Sec.~\ref{sec:discussion}).
+$\|\nabla^2 \hat{p} + k^2 \hat{p}\|^2$ via the forward surrogate.
+However, this \emph{degrades} reconstruction: the neural $\nabla^2$
+captures network curvature rather than physical pressure gradients,
+due to second-derivative amplification in the Fourier features.
+We analyze this failure in detail in Sec.~\ref{sec:discussion}.
 
 % -----------------------------------------------------------------------
 \subsection{Cycle-Consistency}
@@ -314,6 +319,9 @@ encoding---is the key contribution. Fourier features accelerate
 convergence but do not improve final accuracy given sufficient training.
 The quad ensemble with calibration yields 4.47\% overall, with per-scene
 errors from 0.93\% (Scene~1) to 18.62\% (Scene~13, deep shadow zone).
+At inference, the neural forward model evaluates 50{,}000 pressure samples
+in 130\,ms (GPU), achieving $2{,}000\times$ speedup over BEM
+(260\,s per scene).
 
 \begin{table}[t]
 \centering
@@ -387,100 +395,79 @@ multi-body Scene~12 (IoU\,=\,0.49).}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig_5_ablation_bars.pdf}
-\caption{Ablation study. (a)~Forward: the $T$ formulation reduces error
-from 48\% to single digits; ensemble further improves to 4.5\%.
-(b)~Inverse: each component contributes to the final IoU of 0.95 (best run).}
-\label{fig:ablation}
+\includegraphics[width=\columnwidth]{fig_5_helmholtz_analysis.pdf}
+\caption{Helmholtz PDE analysis.
+(a)~Neural $\nabla^2 p$ (autodiff) vs.\ physical $\nabla^2 p = -k^2 p_{\rm BEM}$:
+Pearson $r = 0.19$, explaining only 3.5\% of physical variance.
+(b)~Second-derivative amplification $4\pi^2\sigma^2$ of random Fourier features:
+at $\sigma = 30$, the amplification exceeds $35{,}000\times$.}
+\label{fig:helmholtz}
 \end{figure}
 
 Cycle-consistency across all 15 scenes yields mean Pearson $r = 0.90$
-(all scenes $r > 0.83$; Fig.~\ref{fig:cycle}). Notably, Scene~12
-achieves $r = 0.92$ despite
-IoU\,=\,0.49, demonstrating that cycle-consistency is necessary but
-\emph{not sufficient} for geometry accuracy: the forward model compensates
-for geometry errors through its spectral input features.
+(all $r > 0.83$). Notably, Scene~12 achieves $r = 0.92$ despite
+IoU\,=\,0.49, showing cycle-consistency is necessary but
+\emph{not sufficient} for geometry accuracy.
 
 % -----------------------------------------------------------------------
 \subsection{Robustness and Generalization}
 \label{sec:robustness}
 
-\textbf{Noise robustness.}
-We add complex Gaussian noise to BEM observations at SNR levels
-$\{10, 20, 30, 40\}$\,dB and re-evaluate cycle-consistency (Table~\ref{tab:noise}).
-Performance degrades gracefully: $r = 0.86$ at 10\,dB SNR
-($\Delta r = -0.04$ from clean).
-
-\begin{table}[t]
-\centering
-\caption{Cycle-consistency under additive noise.}
-\label{tab:noise}
-\begin{tabular}{ccc}
-\toprule
-SNR (dB) & Mean $r$ & $\Delta r$ \\
-\midrule
-Clean & 0.902 & --- \\
-40 & 0.902 & $-$0.000 \\
-30 & 0.902 & $-$0.000 \\
-20 & 0.898 & $-$0.004 \\
-10 & 0.860 & $-$0.042 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\columnwidth]{fig_6_cycle_consistency.pdf}
-\caption{Per-scene cycle-consistency (Pearson $r$). All 15 scenes exceed
-the $r > 0.8$ gate. Mean $r = 0.90$.}
-\label{fig:cycle}
-\end{figure}
-
-\textbf{Cross-frequency generalization.}
-We evaluate frequency extrapolation (train: 2--6\,kHz, test: 6--8\,kHz)
-and interpolation (train: even-index, test: odd-index frequencies).
-Extrapolation yields 42.99\% test error (vs.\ 4.92\% train), indicating
-the model memorizes per-frequency patterns rather than learning a
-frequency-continuous representation---the random Fourier feature encoding
-treats $k$ as a positional input, providing no guarantee of smooth
-spectral interpolation.
-The interpolation split (even$\to$odd frequencies, 60\,Hz gap) yields
-38.21\% \emph{training} error, indicating a data-density failure rather
-than a generalization gap: 100 training frequencies are insufficient
-to cover the spectral domain.
-
-\textbf{Seed variance.}
-Training with 3 random seeds $\{42, 123, 456\}$ yields mean
-IoU\,=\,$0.912 \pm 0.011$ and mean $r = 0.907 \pm 0.001$, confirming
-reproducibility (all seeds pass both gates).
-
-\textbf{Leave-one-out generalization.}
-We freeze the SDF decoder trained on all 15 scenes and optimize only
-the latent code for a held-out scene. Mean IoU recovery is 52\%:
-wedge-like geometries recover well (Scene~1: 92\%, Scene~14: 97\%),
-while novel shapes struggle (Scene~5 barrier: 9\%, Scene~10 triangle: 22\%).
-This indicates the decoder learns shape priors biased toward
-training geometries, as expected for an auto-decoder with only 15 scenes.
+\textbf{Robustness.}
+Adding complex Gaussian noise at 10--40\,dB SNR shows graceful
+degradation: $r = 0.86$ at 10\,dB ($\Delta r = -0.04$).
+Three-seed reproducibility confirms
+IoU\,=\,$0.912 \pm 0.011$, $r = 0.907 \pm 0.001$ (all seeds pass gates).
+Leave-one-out code optimization recovers 52\% mean IoU; wedge-like
+shapes generalize (S1: 92\%, S14: 97\%) while novel shapes do not
+(S5: 9\%, S10: 22\%).
+Cross-frequency extrapolation (2--6\,kHz$\to$6--8\,kHz) fails at 43\% error,
+indicating per-frequency memorization rather than spectral continuity.
 
 % -----------------------------------------------------------------------
-\subsection{On Helmholtz PDE Loss}
+\subsection{Why Helmholtz PDE Loss Fails}
 \label{sec:discussion}
 
-A distinguishing aspect of our work is the deliberate \emph{exclusion}
-of Helmholtz PDE supervision. Physics-informed approaches typically
-enforce $\|\nabla^2 p + k^2 p\|^2 \to 0$ via automatic differentiation
-of a neural field~\cite{raissi2019physics}. In our framework, the forward
-model $f_\theta$ is a \emph{surrogate} MLP, not a continuous field: its
-$\nabla^2$ (computed via second-order autodiff w.r.t.\ input coordinates)
-reflects network curvature rather than the physical Laplacian of pressure.
-We measured residuals of $\mathcal{O}(10^5)$, and enabling this loss
-collapsed IoU from 0.82 to 0.19 within 30 epochs by distorting the SDF.
+Physics-informed approaches typically enforce
+$\|\nabla^2 p + k^2 p\|^2 \to 0$ via automatic differentiation of a
+neural field~\cite{raissi2019physics}. We investigate \emph{why} this
+fails for our surrogate architecture and identify the root cause.
 
-The Eikonal constraint $|\nabla s| = 1$ succeeds because it operates on
-the SDF decoder's own output, where network gradients align with the
-physical quantity. This asymmetry---geometry constraints work, wave-equation
-constraints do not---has implications for the growing literature on
-physics-informed acoustic models.
+\textbf{Empirical measurement.}
+We compute the neural Laplacian $\nabla^2_{\text{auto}} p$ via second-order
+autodiff of $f_\theta$ w.r.t.\ receiver coordinates, and compare it against
+the physical Laplacian $\nabla^2_{\text{phys}} p = -k^2 p$ (which holds
+exactly for the BEM ground truth by the Helmholtz equation).
+Over 10{,}000 evaluation points across 5 scenes
+(Fig.~\ref{fig:helmholtz}a), the Pearson correlation is
+$r = 0.19$---the neural Laplacian explains only 3.5\% of the physical
+Laplacian's variance. The median Helmholtz residual
+$|\nabla^2_{\text{auto}} p + k^2 p|$ is $\mathcal{O}(10^3)$,
+confirming that the neural $\nabla^2$ is dominated by network curvature.
+Enabling this loss collapsed IoU from 0.82 to 0.19 within 30 epochs.
+
+\textbf{Cause: Fourier feature amplification.}
+Wang et al.~\cite{wang2021eigenvector} showed that random Fourier features
+modulate NTK convergence rates. We extend this to identify a practical
+failure mode: the encoding $\gamma(\bm{v}) = \cos(2\pi \bm{B}\bm{v})$
+with $B_{ij} \sim \mathcal{N}(0, \sigma^2)$ has second derivatives
+$\partial^2 \gamma / \partial v_j^2 = -(2\pi B_j)^2 \gamma(\bm{v})$,
+yielding an expected amplification
+$\mathbb{E}[(2\pi B_j)^2] = 4\pi^2 \sigma^2$.
+At $\sigma = 30$\,m$^{-1}$ (required for resolving $k_{\max} = 146$\,rad/m),
+this gives $4\pi^2 \cdot 900 \approx 35{,}000\times$ amplification
+(Fig.~\ref{fig:helmholtz}b), compounded to ${\sim}55{,}000\times$ by the
+8-layer ResNet. High $\sigma$ is needed for forward accuracy, but it makes
+$\nabla^2 f_\theta$ physically meaningless.
+
+\textbf{Asymmetry with Eikonal.}
+The Eikonal constraint $|\nabla s| = 1$ succeeds because it requires
+only \emph{first}-order gradients of the SDF decoder's own output, where
+network gradients align with the physical quantity.
+Helmholtz requires \emph{second}-order gradients of a different network
+(the frozen forward model), through a high-bandwidth Fourier encoding.
+This first- vs.\ second-order asymmetry explains why geometry constraints
+work while wave-equation constraints do not.
 
 % ========================================================================
 % 4. CONCLUSION
@@ -490,24 +477,27 @@ physics-informed acoustic models.
 
 We presented a cycle-consistent neural framework for 2D acoustic
 diffraction tomography. The transfer function formulation is the central
-contribution: it reduces forward error from 48\% (vanilla baseline) to
-4.47\% (quad ensemble), a $>$10$\times$ improvement. A single model
-without Fourier features reaches 2.27\% given sufficient training,
-confirming the transfer function as the primary factor.
-The auto-decoder inverse model with Eikonal regularization achieves
-$0.91 \pm 0.01$ mean IoU (3 seeds; best run 0.95), and cycle-consistency
-provides acoustic validation ($r = 0.907 \pm 0.001$) robust to 10\,dB noise. Frequency
-generalization remains limited: the model memorizes per-frequency
-patterns rather than learning continuous spectral representations.
-Our negative result on Helmholtz PDE loss highlights a fundamental gap
-between neural surrogates and physics-based solvers.
+enabler: it reduces forward error from 48\% to 4.47\% while providing
+$2{,}000\times$ speedup over BEM (0.13\,s vs.\ 260\,s per scene).
+A single model without Fourier features reaches 2.27\%,
+confirming the formulation---not the encoding---as the key factor.
+The auto-decoder inverse model achieves
+$0.91 \pm 0.01$ mean IoU, validated by cycle-consistency
+($r = 0.907 \pm 0.001$) robust to 10\,dB noise.
 
-Limitations include: restriction to 2D synthetic data (15 scenes),
-per-scene optimization (no amortized inference), limited cross-frequency
-generalization, and difficulty with disjoint multi-body geometries
-(S12 IoU\,=\,0.49). Future work will address 3D extension,
-frequency-continuous architectures, encoder-based generalization, and
-differentiable BEM solvers for physically valid PDE enforcement.
+Our Helmholtz PDE analysis reveals a fundamental obstacle for
+physics-informed neural surrogates: random Fourier features amplify
+second derivatives by $\sim$35{,}000$\times$, reducing the neural-physical
+Laplacian correlation to $r = 0.19$.
+This quantifies the gap between network curvature and physical
+Laplacians, with implications for the PINN literature on acoustic
+surrogate models.
+
+Limitations include: 2D synthetic data only (15 scenes),
+per-scene optimization, limited cross-frequency generalization,
+and disjoint geometry difficulty (S12 IoU\,=\,0.49). Future work
+targets 3D extension, frequency-continuous architectures, and
+differentiable BEM solvers for physically grounded PDE enforcement.
 
 % ========================================================================
 % REFERENCES
